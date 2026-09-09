@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#18181b"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </radialGradient>
+
+    <!-- Mate Body Gradient (Rich earthy gourd leather/wood) -->
+    <linearGradient id="mateBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d1a10"/>
+      <stop offset="40%" stop-color="#452213"/>
+      <stop offset="80%" stop-color="#2a150c"/>
+      <stop offset="100%" stop-color="#190c07"/>
+    </linearGradient>
+
+    <!-- Silver Rim (Virola) Gradient -->
+    <linearGradient id="silverRimGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#94a3b8"/>
+      <stop offset="35%" stop-color="#f8fafc"/>
+      <stop offset="60%" stop-color="#cbd5e1"/>
+      <stop offset="85%" stop-color="#64748b"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+
+    <!-- Silver Bombilla Gradient -->
+    <linearGradient id="bombillaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e2e8f0"/>
+      <stop offset="30%" stop-color="#f8fafc"/>
+      <stop offset="70%" stop-color="#94a3b8"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+
+    <!-- Gold Mouthpiece Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="50%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+
+    <!-- Yerba Mate Green Gradient -->
+    <radialGradient id="yerbaGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="40%" stop-color="#16a34a"/>
+      <stop offset="80%" stop-color="#15803d"/>
+      <stop offset="100%" stop-color="#14532d"/>
+    </radialGradient>
+
+    <!-- MariaDB / MySQL Turquoise Database Glow -->
+    <linearGradient id="dbGreenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="50%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+
+    <filter id="mateGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Rounded App Icon Background Plate -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bgGrad)" stroke="#27272a" stroke-width="6"/>
+  <rect x="22" y="22" width="468" height="468" rx="102" fill="none" stroke="#10b981" stroke-width="2" stroke-opacity="0.3"/>
+
+  <!-- Subtle Database Rings in background behind Mate -->
+  <g opacity="0.2" transform="translate(0, -20)">
+    <ellipse cx="256" cy="180" rx="150" ry="32" fill="none" stroke="#10b981" stroke-width="3" stroke-dasharray="8 6"/>
+    <ellipse cx="256" cy="240" rx="170" ry="36" fill="none" stroke="#34d399" stroke-width="3" stroke-dasharray="10 8"/>
+    <ellipse cx="256" cy="300" rx="180" ry="38" fill="none" stroke="#10b981" stroke-width="3" stroke-dasharray="8 6"/>
+  </g>
+
+  <!-- Glowing green aura -->
+  <circle cx="256" cy="320" r="140" fill="#10b981" opacity="0.12" filter="url(#mateGlow)"/>
+
+  <!-- Bombilla (Straw) pointing top-right to bottom-left into gourd -->
+  <g>
+    <!-- Bombilla Tube -->
+    <path d="M 330 65 L 360 90 L 255 270 L 235 250 Z" fill="url(#bombillaGrad)" stroke="#475569" stroke-width="2"/>
+    <!-- Bombilla Tip / Mouthpiece (Gold) -->
+    <path d="M 324 60 L 348 40 C 354 35, 368 46, 362 52 L 342 75 Z" fill="url(#goldGrad)" stroke="#b45309" stroke-width="1.5"/>
+    <!-- Decorative Ring on Straw -->
+    <rect x="312" y="98" width="16" height="6" rx="2" transform="rotate(40 312 98)" fill="url(#goldGrad)"/>
+    <rect x="300" y="114" width="16" height="6" rx="2" transform="rotate(40 300 114)" fill="url(#goldGrad)"/>
+  </g>
+
+  <!-- Mate Gourd (Body) -->
+  <path d="M 160 230 
+           C 110 260, 115 360, 150 410 
+           C 180 450, 332 450, 362 410 
+           C 397 360, 402 260, 352 230 
+           Z" 
+        fill="url(#mateBodyGrad)" 
+        stroke="#3f1f11" 
+        stroke-width="5"/>
+
+  <!-- Gourd Leather Texture / Highlights -->
+  <path d="M 155 250 
+           C 130 280, 130 350, 160 395 
+           C 175 415, 205 430, 256 433 
+           C 215 430, 175 400, 160 370 
+           C 145 335, 145 285, 165 255 Z" 
+        fill="#ffffff" 
+        opacity="0.08"/>
+
+  <!-- Database Cylinder Accent integrated into lower Mate base -->
+  <g transform="translate(196, 395) scale(0.6)">
+    <ellipse cx="100" cy="50" rx="90" ry="22" fill="#047857" opacity="0.4"/>
+    <path d="M 10 30 C 10 45, 190 45, 190 30 L 190 45 C 190 60, 10 60, 10 45 Z" fill="#10b981"/>
+    <ellipse cx="100" cy="30" rx="90" ry="20" fill="#34d399"/>
+    <ellipse cx="100" cy="30" rx="72" ry="15" fill="#064e3b"/>
+    <ellipse cx="100" cy="30" rx="50" ry="10" fill="#34d399"/>
+  </g>
+
+  <!-- Silver Virola (Metal Rim on Top of Mate) -->
+  <!-- Outer rim -->
+  <ellipse cx="256" cy="225" rx="102" ry="34" fill="url(#silverRimGrad)" stroke="#475569" stroke-width="4"/>
+  <!-- Inner rim hole showing yerba mate -->
+  <ellipse cx="256" cy="225" rx="84" ry="25" fill="#064e3b"/>
+  <!-- Yerba Mate bed -->
+  <ellipse cx="256" cy="225" rx="80" ry="22" fill="url(#yerbaGrad)"/>
+
+  <!-- Yerba Mate Leaves & Foam Detail -->
+  <circle cx="235" cy="224" r="5" fill="#86efac" opacity="0.6"/>
+  <circle cx="245" cy="220" r="4" fill="#bbf7d0" opacity="0.5"/>
+  <circle cx="228" cy="228" r="3.5" fill="#86efac" opacity="0.7"/>
+  <circle cx="260" cy="228" r="4" fill="#bbf7d0" opacity="0.6"/>
+  <circle cx="270" cy="222" r="3" fill="#86efac" opacity="0.5"/>
+  <circle cx="220" cy="222" r="3" fill="#15803d"/>
+  <circle cx="280" cy="226" r="4" fill="#166534"/>
+
+  <!-- Steam / Aroma Swirls (Delicate green/teal vapors) -->
+  <path d="M 230 180 C 215 150, 240 125, 225 95" fill="none" stroke="#34d399" stroke-width="3.5" stroke-linecap="round" opacity="0.5"/>
+  <path d="M 265 170 C 280 145, 260 120, 275 90" fill="none" stroke="#6ee7b7" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- MariaDB / MySQL Dolphin Silhouette on the Gourd -->
+  <path d="M 235 305 
+           C 245 290, 265 285, 280 295 
+           C 290 302, 298 315, 292 328 
+           C 285 338, 272 342, 260 338 
+           C 252 335, 246 328, 248 322 
+           C 250 318, 256 317, 260 320 
+           C 264 323, 268 323, 272 320 
+           C 278 314, 274 304, 265 302 
+           C 255 300, 244 305, 238 312 
+           Z" 
+        fill="#34d399" 
+        opacity="0.85"/>
+  <polygon points="286,290 292,278 296,293" fill="#34d399" opacity="0.85"/>
+  <polygon points="234,310 222,315 228,304" fill="#34d399" opacity="0.85"/>
+</svg>

@@ -1,0 +1,90 @@
+{
+  "name": "maria-toma-mate",
+  "version": "1.0.0",
+  "description": "Cliente visual moderno y liviano para MariaDB y MySQL",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev:vite": "vite",
+    "dev:electron": "tsc -p tsconfig.electron.json && electron .",
+    "dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && tsc -p tsconfig.electron.json --watch\" \"wait-on tcp:5173 && electron .\"",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:ui": "vite build",
+    "build": "npm run build:ui && npm run build:electron",
+    "package:win": "npm run build && electron-builder --win portable",
+    "package:win:portable": "npm run build && electron-builder --win portable",
+    "package:win:nsis": "npm run build && electron-builder --win nsis",
+    "package:dir": "npm run build && electron-builder --dir",
+    "package:linux": "npm run build && electron-builder --linux AppImage",
+    "start": "electron ."
+  },
+  "build": {
+    "appId": "com.mariatomamate.app",
+    "productName": "Maria Toma Mate",
+    "icon": "public/icon.png",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "public/icon.ico",
+      "public/icon.png",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "public/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Maria Toma Mate"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Development"
+    }
+  },
+  "keywords": [
+    "mariadb",
+    "mysql",
+    "sql",
+    "electron",
+    "database",
+    "client",
+    "mate"
+  ],
+  "author": "Demian Abiusi",
+  "license": "MIT",
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.38.0",
+    "mysql2": "^3.12.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "electron": "^44.1.0",
+    "electron-builder": "^26.15.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "wait-on": "^9.1.0"
+  }
+}
