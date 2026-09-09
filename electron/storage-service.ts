@@ -17,6 +17,7 @@ export interface SavedConnection {
 
 export interface AppSettings {
   lastActiveConnectionId?: string | null;
+  lastActiveDatabase?: string | null;
   autoConnectOnStartup?: boolean;
 }
 
@@ -26,6 +27,7 @@ export class StorageService {
   private connections: SavedConnection[] = [];
   private settings: AppSettings = {
     lastActiveConnectionId: null,
+    lastActiveDatabase: null,
     autoConnectOnStartup: true
   };
 

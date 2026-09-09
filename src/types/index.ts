@@ -107,6 +107,7 @@ export interface IpcResponse<T = any> {
 
 export interface AppSettings {
   lastActiveConnectionId?: string | null;
+  lastActiveDatabase?: string | null;
   autoConnectOnStartup?: boolean;
 }
 

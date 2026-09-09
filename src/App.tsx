@@ -75,10 +75,12 @@ export const App: React.FC = () => {
   const activeTabIdRef = useRef(activeTabId);
   const maxRowsRef = useRef(maxRows);
   const activeConfigRef = useRef(activeConfig);
+  const activeDatabaseRef = useRef(activeDatabase);
   useEffect(() => { tabsRef.current = tabs; }, [tabs]);
   useEffect(() => { activeTabIdRef.current = activeTabId; }, [activeTabId]);
   useEffect(() => { maxRowsRef.current = maxRows; }, [maxRows]);
   useEffect(() => { activeConfigRef.current = activeConfig; }, [activeConfig]);
+  useEffect(() => { activeDatabaseRef.current = activeDatabase; }, [activeDatabase]);
 
   // Panel resizing states
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -123,7 +125,9 @@ export const App: React.FC = () => {
         const res = await window.electronAPI.getSchemaObjects();
         if (res.success && res.data) {
           setSchemaObjects(res.data);
-          setActiveDatabase(res.data.currentDatabase || null);
+          if (res.data.currentDatabase) {
+            setActiveDatabase(res.data.currentDatabase);
+          }
         } else {
           setSchemaObjects(null);
         }
@@ -144,20 +148,41 @@ export const App: React.FC = () => {
         const res = await window.electronAPI.switchDatabase(dbName);
         if (res.success) {
           setActiveDatabase(dbName);
+          if (activeConfigRef.current) {
+            saveWorkspaceNow(
+              activeConfigRef.current.id,
+              tabsRef.current,
+              activeTabIdRef.current,
+              maxRowsRef.current,
+              dbName
+            );
+            if (window.electronAPI?.saveAppSettings) {
+              window.electronAPI.saveAppSettings({
+                lastActiveConnectionId: activeConfigRef.current.id,
+                lastActiveDatabase: dbName
+              });
+            }
+          }
           await refreshSchema();
         }
       }
     } catch (err) {
       console.error('Error switching database:', err);
     }
-  }, [isConnected, refreshSchema]);
+  }, [isConnected, refreshSchema, saveWorkspaceNow]);
 
   // Connect action
-  const handleConnect = useCallback(async (config: ConnectionConfig) => {
+  const handleConnect = useCallback(async (config: ConnectionConfig, preferredDb?: string | null) => {
     if (window.electronAPI?.connect) {
       setSchemaObjects(null);
       setIsLoadingSchema(true);
-      const res = await window.electronAPI.connect(config);
+
+      // Hydrate workspace for this connection first to retrieve saved activeDatabase if any
+      const workspace = hydrateWorkspace(config.id);
+      const targetDb = preferredDb !== undefined ? preferredDb : (workspace.activeDatabase || config.database || null);
+      const configToConnect = targetDb ? { ...config, database: targetDb } : { ...config };
+
+      const res = await window.electronAPI.connect(configToConnect);
       if (!res.success) {
         setIsLoadingSchema(false);
         throw new Error(res.error || 'No se pudo establecer la conexión');
@@ -165,13 +190,28 @@ export const App: React.FC = () => {
 
       setIsConnected(true);
       setActiveConfig(config);
-      setActiveDatabase(res.data?.database || config.database || null);
 
-      // Hydrate workspace for this connection
-      const workspace = hydrateWorkspace(config.id);
+      let finalDb = res.data?.database || targetDb || null;
+      if (targetDb && window.electronAPI?.switchDatabase) {
+        try {
+          await window.electronAPI.switchDatabase(targetDb);
+          finalDb = targetDb;
+        } catch {}
+      }
+      setActiveDatabase(finalDb);
+
       setTabs(workspace.tabs);
       setActiveTabId(workspace.activeTabId);
       setMaxRows(workspace.maxRows);
+
+      // Save settings and workspace
+      if (window.electronAPI?.saveAppSettings) {
+        window.electronAPI.saveAppSettings({
+          lastActiveConnectionId: config.id,
+          lastActiveDatabase: finalDb
+        });
+      }
+      saveWorkspaceNow(config.id, workspace.tabs, workspace.activeTabId, workspace.maxRows, finalDb);
 
       // Fetch schema objects
       setTimeout(async () => {
@@ -179,14 +219,16 @@ export const App: React.FC = () => {
           const schemaRes = await window.electronAPI.getSchemaObjects();
           if (schemaRes.success && schemaRes.data) {
             setSchemaObjects(schemaRes.data);
-            setActiveDatabase(schemaRes.data.currentDatabase || null);
+            if (schemaRes.data.currentDatabase) {
+              setActiveDatabase(schemaRes.data.currentDatabase);
+            }
           }
         } finally {
           setIsLoadingSchema(false);
         }
       }, 100);
     }
-  }, [hydrateWorkspace]);
+  }, [hydrateWorkspace, saveWorkspaceNow]);
 
   // Disconnect action
   const handleDisconnect = useCallback(async () => {
@@ -195,7 +237,8 @@ export const App: React.FC = () => {
         activeConfigRef.current.id,
         tabsRef.current,
         activeTabIdRef.current,
-        maxRowsRef.current
+        maxRowsRef.current,
+        activeDatabaseRef.current
       );
     }
 
@@ -221,7 +264,9 @@ export const App: React.FC = () => {
         if (settings?.autoConnectOnStartup && settings.lastActiveConnectionId && conns) {
           const target = conns.find(c => c.id === settings.lastActiveConnectionId);
           if (target) {
-            handleConnect(target).catch(err => {
+            const workspace = hydrateWorkspace(target.id);
+            const dbToUse = settings.lastActiveDatabase || workspace.activeDatabase || target.database || null;
+            handleConnect(target, dbToUse).catch(err => {
               console.warn('Auto-connect on startup failed:', err);
               setIsConnectionModalOpen(true);
             });
@@ -236,7 +281,7 @@ export const App: React.FC = () => {
     } else {
       setIsConnectionModalOpen(true);
     }
-  }, [loadSavedConnections, handleConnect]);
+  }, [loadSavedConnections, handleConnect, hydrateWorkspace]);
 
   // Tab operations
   const handleAddTab = () => {
@@ -254,7 +299,7 @@ export const App: React.FC = () => {
     setTabs(nextTabs);
     setActiveTabId(newId);
     if (activeConfig) {
-      saveWorkspaceDebounced(activeConfig.id, nextTabs, newId, maxRows);
+      saveWorkspaceDebounced(activeConfig.id, nextTabs, newId, maxRows, activeDatabaseRef.current);
     }
   };
 
@@ -272,7 +317,7 @@ export const App: React.FC = () => {
     }
     setTabs(nextTabs);
     if (activeConfig) {
-      saveWorkspaceDebounced(activeConfig.id, nextTabs, nextActiveId, maxRows);
+      saveWorkspaceDebounced(activeConfig.id, nextTabs, nextActiveId, maxRows, activeDatabaseRef.current);
     }
   };
 
@@ -280,7 +325,7 @@ export const App: React.FC = () => {
     const nextTabs = tabs.map(t => t.id === id ? { ...t, title: newTitle } : t);
     setTabs(nextTabs);
     if (activeConfig) {
-      saveWorkspaceDebounced(activeConfig.id, nextTabs, activeTabId, maxRows);
+      saveWorkspaceDebounced(activeConfig.id, nextTabs, activeTabId, maxRows, activeDatabaseRef.current);
     }
   };
 
@@ -288,7 +333,7 @@ export const App: React.FC = () => {
     const nextTabs = tabs.map(t => t.id === activeTabId ? { ...t, sql: newSql } : t);
     setTabs(nextTabs);
     if (activeConfig) {
-      saveWorkspaceDebounced(activeConfig.id, nextTabs, activeTabId, maxRows);
+      saveWorkspaceDebounced(activeConfig.id, nextTabs, activeTabId, maxRows, activeDatabaseRef.current);
     }
   };
 
@@ -341,6 +386,28 @@ export const App: React.FC = () => {
             },
             ...prev.slice(0, 150)
           ]);
+
+          // If query was USE database, update active database and persist
+          const useMatch = queryToRun.match(/^\s*USE\s+[`"']?([a-zA-Z0-9_$]+)[`"']?\s*;?$/i);
+          if (useMatch) {
+            const newDb = useMatch[1];
+            setActiveDatabase(newDb);
+            if (activeConfigRef.current) {
+              saveWorkspaceNow(
+                activeConfigRef.current.id,
+                tabsRef.current,
+                activeTabIdRef.current,
+                maxRowsRef.current,
+                newDb
+              );
+              if (window.electronAPI?.saveAppSettings) {
+                window.electronAPI.saveAppSettings({
+                  lastActiveConnectionId: activeConfigRef.current.id,
+                  lastActiveDatabase: newDb
+                });
+              }
+            }
+          }
 
           // If query modified schema (CREATE, ALTER, DROP, USE), refresh schema
           if (/^\s*(CREATE|ALTER|DROP|RENAME|TRUNCATE|USE)\b/i.test(queryToRun)) {

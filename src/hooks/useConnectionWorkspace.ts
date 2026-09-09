@@ -7,6 +7,7 @@ interface ConnectionWorkspace {
   tabs: PersistedTab[];
   activeTabId: string;
   maxRows: number;
+  activeDatabase?: string | null;
 }
 
 const STORAGE_KEY = 'mariatomamate_workspaces';
@@ -53,7 +54,7 @@ export function useConnectionWorkspace() {
   );
 
   const saveWorkspaceNow = useCallback(
-    (connectionId: string, tabs: QueryTab[], activeTabId: string, maxRows: number) => {
+    (connectionId: string, tabs: QueryTab[], activeTabId: string, maxRows: number, activeDatabase?: string | null) => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       const all = readAll();
       all[connectionId] = {
@@ -65,6 +66,7 @@ export function useConnectionWorkspace() {
         })),
         activeTabId,
         maxRows,
+        activeDatabase: activeDatabase ?? all[connectionId]?.activeDatabase ?? null
       };
       writeAll(all);
     },
@@ -72,17 +74,17 @@ export function useConnectionWorkspace() {
   );
 
   const saveWorkspaceDebounced = useCallback(
-    (connectionId: string, tabs: QueryTab[], activeTabId: string, maxRows: number) => {
+    (connectionId: string, tabs: QueryTab[], activeTabId: string, maxRows: number, activeDatabase?: string | null) => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
-        saveWorkspaceNow(connectionId, tabs, activeTabId, maxRows);
+        saveWorkspaceNow(connectionId, tabs, activeTabId, maxRows, activeDatabase);
       }, DEBOUNCE_MS);
     },
     [saveWorkspaceNow]
   );
 
   const hydrateWorkspace = useCallback(
-    (connectionId: string): { tabs: QueryTab[]; activeTabId: string; maxRows: number } => {
+    (connectionId: string): { tabs: QueryTab[]; activeTabId: string; maxRows: number; activeDatabase: string | null } => {
       const saved = loadWorkspace(connectionId);
 
       if (!saved || saved.tabs.length === 0) {
@@ -90,6 +92,7 @@ export function useConnectionWorkspace() {
           tabs: [{ ...BLANK_TAB, result: null, isRunning: false, error: null }],
           activeTabId: BLANK_TAB.id,
           maxRows: 1000,
+          activeDatabase: saved?.activeDatabase ?? null
         };
       }
 
@@ -104,7 +107,12 @@ export function useConnectionWorkspace() {
         ? saved.activeTabId
         : tabs[0].id;
 
-      return { tabs, activeTabId, maxRows: saved.maxRows ?? 1000 };
+      return { 
+        tabs, 
+        activeTabId, 
+        maxRows: saved.maxRows ?? 1000, 
+        activeDatabase: saved.activeDatabase ?? null 
+      };
     },
     [loadWorkspace]
   );
