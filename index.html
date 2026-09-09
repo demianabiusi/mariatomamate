@@ -6,7 +6,7 @@
     <title>Maria Toma Mate - Cliente MariaDB & MySQL</title>
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <!-- Content Security Policy for Electron security -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;" />
   </head>
   <body class="bg-zinc-950 text-zinc-100 antialiased overflow-hidden select-none">
     <div id="root"></div>

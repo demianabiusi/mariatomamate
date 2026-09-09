@@ -1,6 +1,10 @@
 import React, { useRef, useEffect } from 'react';
-import Editor, { OnMount } from '@monaco-editor/react';
+import Editor, { OnMount, loader } from '@monaco-editor/react';
+import * as monaco from 'monaco-editor';
 import { useTranslation } from '../../i18n/I18nContext';
+
+// Ensure Monaco uses local offline bundle
+loader.config({ monaco });
 import { SchemaObjects } from '../../types';
 import { 
   Play, 
@@ -410,6 +414,12 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
           value={sql}
           onChange={(val) => onChange(val || '')}
           onMount={handleEditorDidMount}
+          loading={
+            <div className="flex items-center justify-center h-full bg-zinc-950 text-zinc-400 text-xs gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Iniciando editor SQL...</span>
+            </div>
+          }
           options={{
             fontSize: 13,
             fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace",
