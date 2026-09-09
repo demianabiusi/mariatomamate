@@ -288,6 +288,59 @@ export class MariaDbService {
 
     const startTime = Date.now();
     try {
+      // Check if script contains client-side DELIMITER commands
+      if (/^\s*DELIMITER\b/im.test(trimmed)) {
+        const statements = this.splitSqlStatements(trimmed);
+        if (statements.length === 0) {
+          throw new Error('No se encontraron sentencias válidas para ejecutar.');
+        }
+        let totalAffected = 0;
+        let lastResult: any = null;
+        let lastFields: any = null;
+        for (const stmt of statements) {
+          const [res, fields] = await this.activeConnection.query(stmt);
+          lastResult = res;
+          lastFields = fields;
+          if (res && typeof (res as any).affectedRows === 'number') {
+            totalAffected += (res as any).affectedRows;
+          }
+        }
+        const executionTimeMs = Date.now() - startTime;
+
+        if (Array.isArray(lastResult)) {
+          const rows = lastResult as any[];
+          const hasMore = rows.length > maxRows;
+          const slicedRows = hasMore ? rows.slice(0, maxRows) : rows;
+          const columns = lastFields && Array.isArray(lastFields)
+            ? (lastFields as any[]).map((f: any) => f.name)
+            : (slicedRows[0] ? Object.keys(slicedRows[0]) : []);
+          const formattedRows = slicedRows.map((row: any) => {
+            const item: any = {};
+            for (const key of Object.keys(row)) {
+              item[key] = this.formatValue(row[key]);
+            }
+            return item;
+          });
+          return {
+            columns,
+            rows: formattedRows,
+            rowCount: formattedRows.length,
+            executionTimeMs,
+            sql: trimmed,
+            hasMore
+          };
+        }
+
+        return {
+          columns: ['RESULTADO'],
+          rows: [{ RESULTADO: `Ejecutadas con éxito ${statements.length} sentencias.` }],
+          rowCount: 1,
+          affectedRows: totalAffected,
+          executionTimeMs,
+          sql: trimmed
+        };
+      }
+
       const [rawResult, fields] = await this.activeConnection.query(trimmed);
       const executionTimeMs = Date.now() - startTime;
 
@@ -786,15 +839,94 @@ export class MariaDbService {
 
   public async getObjectDdl(objectType: string, objectName: string): Promise<{ ddl: string; name: string; type: string }> {
     if (!this.activeConnection) {
-      throw new Error('No hay conexión activa.');
+      throw new Error('No hay conexión activa a la base de datos.');
     }
-    const currentDb = this.currentConfig?.database;
+
+    let currentDb = this.currentConfig?.database?.trim();
     if (!currentDb) {
-      throw new Error('No hay base de datos seleccionada.');
+      try {
+        const [dbRows] = await this.activeConnection.query('SELECT DATABASE() AS db;');
+        currentDb = (dbRows as any[])[0]?.db || '';
+        if (currentDb && this.currentConfig) {
+          this.currentConfig.database = currentDb;
+        }
+      } catch {}
+    }
+    if (!currentDb) {
+      throw new Error('No hay una base de datos activa seleccionada.');
     }
 
     const cleanName = objectName.trim().replace(/`/g, '');
     const typeUpper = objectType.trim().toUpperCase();
+
+    const extractDdlField = (row: any, candidates: string[]): string => {
+      if (!row || typeof row !== 'object') return '';
+      const entries = Object.entries(row);
+      for (const cand of candidates) {
+        const found = entries.find(([k]) => k.toLowerCase() === cand.toLowerCase());
+        if (found && found[1] != null && String(found[1]).trim() !== '') {
+          return String(found[1]).trim();
+        }
+      }
+      for (const cand of candidates) {
+        const found = entries.find(([k]) => k.toLowerCase().includes(cand.toLowerCase()));
+        if (found && found[1] != null && String(found[1]).trim() !== '') {
+          return String(found[1]).trim();
+        }
+      }
+      return '';
+    };
+
+    const reconstructRoutineFromSchema = async (type: 'PROCEDURE' | 'FUNCTION', name: string): Promise<string> => {
+      try {
+        const [routines] = await this.activeConnection!.query(
+          'SELECT * FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?;',
+          [currentDb, name, type]
+        );
+        if (!Array.isArray(routines) || routines.length === 0) return '';
+        const r = routines[0] as any;
+        if (!r.ROUTINE_DEFINITION) return '';
+
+        let definerClause = '';
+        if (r.DEFINER) {
+          const definerStr = String(r.DEFINER);
+          if (definerStr.includes('@')) {
+            const parts = definerStr.split('@');
+            definerClause = `DEFINER=\`${parts[0].replace(/`/g, '')}\`@\`${parts[1].replace(/`/g, '')}\` `;
+          } else {
+            definerClause = `DEFINER=\`${definerStr.replace(/`/g, '')}\` `;
+          }
+        }
+
+        const [params] = await this.activeConnection!.query(
+          'SELECT * FROM information_schema.PARAMETERS WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ? ORDER BY ORDINAL_POSITION;',
+          [currentDb, name]
+        );
+
+        let paramClause = '';
+        if (type === 'PROCEDURE') {
+          const pList = (Array.isArray(params) ? params : [])
+            .filter((p: any) => p.PARAMETER_NAME)
+            .map((p: any) => `${p.PARAMETER_MODE || 'IN'} \`${p.PARAMETER_NAME}\` ${p.DTD_IDENTIFIER || p.DATA_TYPE}`);
+          paramClause = `(${pList.join(', ')})`;
+        } else {
+          const pList = (Array.isArray(params) ? params : [])
+            .filter((p: any) => p.PARAMETER_NAME)
+            .map((p: any) => `\`${p.PARAMETER_NAME}\` ${p.DTD_IDENTIFIER || p.DATA_TYPE}`);
+          paramClause = `(${pList.join(', ')}) RETURNS ${r.DTD_IDENTIFIER || r.DATA_TYPE || 'VARCHAR(255)'}`;
+        }
+
+        const deterministic = r.IS_DETERMINISTIC === 'YES' ? '\n    DETERMINISTIC' : '';
+        const sqlSecurity = r.SECURITY_TYPE ? `\n    SQL SECURITY ${r.SECURITY_TYPE}` : '';
+        const dataAccess = r.SQL_DATA_ACCESS ? `\n    ${r.SQL_DATA_ACCESS}` : '';
+        const comment = r.ROUTINE_COMMENT ? `\n    COMMENT '${String(r.ROUTINE_COMMENT).replace(/'/g, "\\'")}'` : '';
+
+        return `CREATE ${definerClause}${type} \`${name}\`${paramClause}${deterministic}${sqlSecurity}${dataAccess}${comment}\n${r.ROUTINE_DEFINITION}`;
+      } catch (e) {
+        console.error('Error in reconstructRoutineFromSchema:', e);
+        return '';
+      }
+    };
 
     if (typeUpper === 'TABLE') {
       const details = await this.getTableDetails(cleanName);
@@ -802,33 +934,111 @@ export class MariaDbService {
     }
 
     if (typeUpper === 'VIEW') {
-      const [rows] = await this.activeConnection.query(`SHOW CREATE VIEW \`${currentDb}\`.\`${cleanName}\`;`);
-      const ddl = (rows as any[])[0]?.['Create View'] || '';
-      return { ddl, name: cleanName, type: 'VIEW' };
+      let ddl = '';
+      try {
+        const [rows] = await this.activeConnection.query(`SHOW CREATE VIEW \`${currentDb}\`.\`${cleanName}\`;`);
+        ddl = extractDdlField((rows as any[])[0], ['Create View']);
+      } catch {
+        try {
+          const [rows] = await this.activeConnection.query(`SHOW CREATE VIEW \`${cleanName}\`;`);
+          ddl = extractDdlField((rows as any[])[0], ['Create View']);
+        } catch {}
+      }
+
+      if (!ddl) {
+        throw new Error(`No se pudo obtener el DDL de la vista '${cleanName}'.`);
+      }
+
+      const cleanDdl = ddl.trim().endsWith(';') ? ddl.trim() : ddl.trim() + ';';
+      return { ddl: cleanDdl + '\n', name: cleanName, type: 'VIEW' };
     }
 
     if (typeUpper === 'PROCEDURE') {
-      const [rows] = await this.activeConnection.query(`SHOW CREATE PROCEDURE \`${currentDb}\`.\`${cleanName}\`;`);
-      const ddl = (rows as any[])[0]?.['Create Procedure'] || '';
-      return { ddl, name: cleanName, type: 'PROCEDURE' };
+      let ddl = '';
+      try {
+        const [rows] = await this.activeConnection.query(`SHOW CREATE PROCEDURE \`${currentDb}\`.\`${cleanName}\`;`);
+        ddl = extractDdlField((rows as any[])[0], ['Create Procedure']);
+      } catch {
+        try {
+          const [rows] = await this.activeConnection.query(`SHOW CREATE PROCEDURE \`${cleanName}\`;`);
+          ddl = extractDdlField((rows as any[])[0], ['Create Procedure']);
+        } catch {}
+      }
+
+      if (!ddl) {
+        ddl = await reconstructRoutineFromSchema('PROCEDURE', cleanName);
+      }
+
+      if (!ddl) {
+        throw new Error(`No se pudo obtener el código del procedimiento almacenado '${cleanName}'. Verifique permisos del usuario.`);
+      }
+
+      const fullDdl = `DELIMITER ;;\n\nDROP PROCEDURE IF EXISTS \`${cleanName}\`;;\n\n${ddl};;\n\nDELIMITER ;\n`;
+      return { ddl: fullDdl, name: cleanName, type: 'PROCEDURE' };
     }
 
     if (typeUpper === 'FUNCTION') {
-      const [rows] = await this.activeConnection.query(`SHOW CREATE FUNCTION \`${currentDb}\`.\`${cleanName}\`;`);
-      const ddl = (rows as any[])[0]?.['Create Function'] || '';
-      return { ddl, name: cleanName, type: 'FUNCTION' };
+      let ddl = '';
+      try {
+        const [rows] = await this.activeConnection.query(`SHOW CREATE FUNCTION \`${currentDb}\`.\`${cleanName}\`;`);
+        ddl = extractDdlField((rows as any[])[0], ['Create Function']);
+      } catch {
+        try {
+          const [rows] = await this.activeConnection.query(`SHOW CREATE FUNCTION \`${cleanName}\`;`);
+          ddl = extractDdlField((rows as any[])[0], ['Create Function']);
+        } catch {}
+      }
+
+      if (!ddl) {
+        ddl = await reconstructRoutineFromSchema('FUNCTION', cleanName);
+      }
+
+      if (!ddl) {
+        throw new Error(`No se pudo obtener el código de la función '${cleanName}'. Verifique permisos del usuario.`);
+      }
+
+      const fullDdl = `DELIMITER ;;\n\nDROP FUNCTION IF EXISTS \`${cleanName}\`;;\n\n${ddl};;\n\nDELIMITER ;\n`;
+      return { ddl: fullDdl, name: cleanName, type: 'FUNCTION' };
     }
 
     if (typeUpper === 'TRIGGER') {
-      const [rows] = await this.activeConnection.query(`SHOW CREATE TRIGGER \`${currentDb}\`.\`${cleanName}\`;`);
-      const ddl = (rows as any[])[0]?.['SQL Original Statement'] || (rows as any[])[0]?.['Create Trigger'] || '';
-      return { ddl, name: cleanName, type: 'TRIGGER' };
+      let ddl = '';
+      try {
+        const [rows] = await this.activeConnection.query(`SHOW CREATE TRIGGER \`${currentDb}\`.\`${cleanName}\`;`);
+        ddl = extractDdlField((rows as any[])[0], ['SQL Original Statement', 'Create Trigger']);
+      } catch {
+        try {
+          const [rows] = await this.activeConnection.query(`SHOW CREATE TRIGGER \`${cleanName}\`;`);
+          ddl = extractDdlField((rows as any[])[0], ['SQL Original Statement', 'Create Trigger']);
+        } catch {}
+      }
+
+      if (!ddl) {
+        throw new Error(`No se pudo obtener el código del disparador (trigger) '${cleanName}'.`);
+      }
+
+      const fullDdl = `DELIMITER ;;\n\nDROP TRIGGER IF EXISTS \`${cleanName}\`;;\n\n${ddl};;\n\nDELIMITER ;\n`;
+      return { ddl: fullDdl, name: cleanName, type: 'TRIGGER' };
     }
 
     if (typeUpper === 'EVENT') {
-      const [rows] = await this.activeConnection.query(`SHOW CREATE EVENT \`${currentDb}\`.\`${cleanName}\`;`);
-      const ddl = (rows as any[])[0]?.['Create Event'] || '';
-      return { ddl, name: cleanName, type: 'EVENT' };
+      let ddl = '';
+      try {
+        const [rows] = await this.activeConnection.query(`SHOW CREATE EVENT \`${currentDb}\`.\`${cleanName}\`;`);
+        ddl = extractDdlField((rows as any[])[0], ['Create Event']);
+      } catch {
+        try {
+          const [rows] = await this.activeConnection.query(`SHOW CREATE EVENT \`${cleanName}\`;`);
+          ddl = extractDdlField((rows as any[])[0], ['Create Event']);
+        } catch {}
+      }
+
+      if (!ddl) {
+        throw new Error(`No se pudo obtener el código del evento programado '${cleanName}'.`);
+      }
+
+      const fullDdl = `DROP EVENT IF EXISTS \`${cleanName}\`;\n\n${ddl};\n`;
+      return { ddl: fullDdl, name: cleanName, type: 'EVENT' };
     }
 
     throw new Error(`Tipo de objeto '${objectType}' no soportado.`);

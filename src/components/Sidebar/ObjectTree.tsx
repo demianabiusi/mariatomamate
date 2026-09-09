@@ -373,9 +373,10 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                     <div
                       key={vw}
                       onClick={() => onSelectObjectSql(`SELECT * FROM \`${vw}\` LIMIT 100;`, true)}
+                      onDoubleClick={() => onEditObject('VIEW', vw)}
                       onContextMenu={(e) => openContextMenu(e, 'VIEW', vw)}
                       className="flex items-center justify-between px-2 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
-                      title={`Clic para consultar primeros 100 de \`${vw}\`\nClic derecho para DDL o eliminar`}
+                      title={`Clic: Consultar primeros 100 de \`${vw}\`\nDoble clic: Ver / Editar DDL\nClic derecho: Opciones`}
                     >
                       <div className="flex items-center gap-1.5 truncate">
                         <Eye className="w-3 h-3 text-zinc-500 group-hover:text-blue-400 shrink-0" />
@@ -434,22 +435,32 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                     return (
                       <div
                         key={proc.name}
-                        onClick={() => onSelectObjectSql(callSql, false)}
+                        onClick={() => onEditObject('PROCEDURE', proc.name)}
+                        onDoubleClick={() => onEditObject('PROCEDURE', proc.name)}
                         onContextMenu={(e) => openContextMenu(e, 'PROCEDURE', proc.name, proc)}
                         className="flex items-center justify-between px-2 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
-                        title={`Clic para plantilla CALL\nClic derecho para DDL`}
+                        title={`Clic o doble clic para abrir código fuente (DDL)\nClic derecho para menú`}
                       >
                         <div className="flex items-center gap-1.5 truncate">
                           <Cog className="w-3 h-3 text-zinc-500 group-hover:text-amber-400 shrink-0" />
                           <span className="truncate">{proc.name}</span>
                         </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onEditObject('PROCEDURE', proc.name); }}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-amber-400 text-zinc-500 rounded"
-                          title={t('sidebar.editProcedureDdl')}
-                        >
-                          <Code className="w-3 h-3" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onSelectObjectSql(callSql, false); }}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-emerald-400 text-zinc-500 rounded"
+                            title={t('sidebar.executeProcedure') || 'Generar CALL en consulta'}
+                          >
+                            <Play className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onEditObject('PROCEDURE', proc.name); }}
+                            className="opacity-60 group-hover:opacity-100 p-0.5 hover:text-amber-400 text-zinc-400 rounded"
+                            title={t('sidebar.editProcedureDdl')}
+                          >
+                            <Code className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -491,22 +502,32 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                   {filteredFunctions.map((fn) => (
                     <div
                       key={fn.name}
-                      onClick={() => onSelectObjectSql(`SELECT \`${fn.name}\`();`, false)}
+                      onClick={() => onEditObject('FUNCTION', fn.name)}
+                      onDoubleClick={() => onEditObject('FUNCTION', fn.name)}
                       onContextMenu={(e) => openContextMenu(e, 'FUNCTION', fn.name)}
                       className="flex items-center justify-between px-2 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
-                      title={`Clic para SELECT ${fn.name}()`}
+                      title={`Clic o doble clic para abrir código fuente (DDL)\nClic derecho para menú`}
                     >
                       <div className="flex items-center gap-1.5 truncate">
                         <Zap className="w-3 h-3 text-zinc-500 group-hover:text-purple-400 shrink-0" />
                         <span className="truncate">{fn.name}</span>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onEditObject('FUNCTION', fn.name); }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-purple-400 text-zinc-500 rounded"
-                        title={t('sidebar.editFunctionDdl')}
-                      >
-                        <Code className="w-3 h-3" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onSelectObjectSql(`SELECT \`${fn.name}\`();`, false); }}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-emerald-400 text-zinc-500 rounded"
+                          title={t('sidebar.executeFunction') || 'Generar SELECT()'}
+                        >
+                          <Play className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditObject('FUNCTION', fn.name); }}
+                          className="opacity-60 group-hover:opacity-100 p-0.5 hover:text-purple-400 text-zinc-400 rounded"
+                          title={t('sidebar.editFunctionDdl')}
+                        >
+                          <Code className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {filteredFunctions.length === 0 && (
@@ -548,17 +569,27 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                     <div
                       key={tr.name}
                       onClick={() => onEditObject('TRIGGER', tr.name)}
+                      onDoubleClick={() => onEditObject('TRIGGER', tr.name)}
                       onContextMenu={(e) => openContextMenu(e, 'TRIGGER', tr.name, tr)}
                       className="flex items-center justify-between px-2 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
-                      title={`Trigger: ${tr.name} (${tr.timing} ${tr.event} en ${tr.table})`}
+                      title={`Trigger: ${tr.name} (${tr.timing} ${tr.event} en ${tr.table})\nClic o doble clic para abrir código DDL`}
                     >
                       <div className="flex items-center gap-1.5 truncate">
                         <Hash className="w-3 h-3 text-zinc-500 group-hover:text-yellow-400 shrink-0" />
                         <span className="truncate">{tr.name}</span>
                       </div>
-                      <span className="text-[10px] text-zinc-500 font-mono">
-                        {tr.table}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-zinc-500 font-mono">
+                          {tr.table}
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditObject('TRIGGER', tr.name); }}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-yellow-400 text-zinc-400 rounded"
+                          title={t('sidebar.editTriggerDdl')}
+                        >
+                          <Code className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {filteredTriggers.length === 0 && (
@@ -590,13 +621,22 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                     <div
                       key={evt}
                       onClick={() => onEditObject('EVENT', evt)}
+                      onDoubleClick={() => onEditObject('EVENT', evt)}
                       onContextMenu={(e) => openContextMenu(e, 'EVENT', evt)}
                       className="flex items-center justify-between px-2 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
+                      title={`Evento programado: ${evt}\nClic o doble clic para abrir código DDL`}
                     >
                       <div className="flex items-center gap-1.5 truncate">
                         <Clock className="w-3 h-3 text-zinc-500 group-hover:text-cyan-400 shrink-0" />
                         <span className="truncate">{evt}</span>
                       </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditObject('EVENT', evt); }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-cyan-400 text-zinc-400 rounded"
+                        title={t('sidebar.editEventDdl')}
+                      >
+                        <Code className="w-3 h-3" />
+                      </button>
                     </div>
                   ))}
                   {filteredEvents.length === 0 && (

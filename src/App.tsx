@@ -512,10 +512,19 @@ export const App: React.FC = () => {
       if (window.electronAPI?.getObjectDdl) {
         const res = await window.electronAPI.getObjectDdl(type, name);
         if (res.success && res.data?.ddl) {
+          const tabTitle = `${type === 'PROCEDURE' ? 'PROC' : type === 'FUNCTION' ? 'FUNC' : type.substring(0, 4)}: ${name}`;
+
+          // Check if tab already exists for this object
+          const existingTab = tabs.find(t => t.title === tabTitle);
+          if (existingTab) {
+            setActiveTabId(existingTab.id);
+            return;
+          }
+
           const newId = 'tab_' + Date.now();
           const newTab: QueryTab = {
             id: newId,
-            title: `${type.substring(0, 4)}: ${name}`,
+            title: tabTitle,
             sql: res.data.ddl,
             result: null,
             isRunning: false,
@@ -524,10 +533,12 @@ export const App: React.FC = () => {
           };
           setTabs(prev => [...prev, newTab]);
           setActiveTabId(newId);
+        } else {
+          alert(`Error al abrir ${type} '${name}':\n${res.error || 'No se pudo obtener el código fuente.'}`);
         }
       }
     } catch (err: any) {
-      alert(`Error al obtener DDL: ${err.message}`);
+      alert(`Error al obtener DDL de ${type} '${name}':\n${err.message}`);
     }
   };
 
