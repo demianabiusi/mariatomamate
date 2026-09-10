@@ -70,17 +70,19 @@ export const App: React.FC = () => {
     });
   };
 
-  // Refs so disconnect/save can always read latest values without stale closures
+  // Refs so disconnect/save/execute can always read latest values without stale closures
   const tabsRef = useRef(tabs);
   const activeTabIdRef = useRef(activeTabId);
   const maxRowsRef = useRef(maxRows);
   const activeConfigRef = useRef(activeConfig);
   const activeDatabaseRef = useRef(activeDatabase);
+  const isConnectedRef = useRef(isConnected);
   useEffect(() => { tabsRef.current = tabs; }, [tabs]);
   useEffect(() => { activeTabIdRef.current = activeTabId; }, [activeTabId]);
   useEffect(() => { maxRowsRef.current = maxRows; }, [maxRows]);
   useEffect(() => { activeConfigRef.current = activeConfig; }, [activeConfig]);
   useEffect(() => { activeDatabaseRef.current = activeDatabase; }, [activeDatabase]);
+  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
 
   // Panel resizing states
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -342,31 +344,32 @@ export const App: React.FC = () => {
   };
 
   // Execute query action
-  const handleExecute = async (selectedOnly: boolean = false) => {
-    if (!isConnected) {
+  const handleExecute = useCallback(async (customQuery?: string) => {
+    if (!isConnectedRef.current) {
       setIsConnectionModalOpen(true);
       return;
     }
 
-    let queryToRun = activeTab.sql;
-    if (selectedOnly) {
-      // In Monaco, selected text is passed or fallback to full query
-    }
+    const currentTabId = activeTabIdRef.current;
+    const currentTab = tabsRef.current.find(t => t.id === currentTabId) || tabsRef.current[0];
+    if (!currentTab) return;
 
-    if (!queryToRun || !queryToRun.trim()) return;
+    let queryToRun = (typeof customQuery === 'string' && customQuery.trim()) ? customQuery.trim() : currentTab.sql.trim();
+
+    if (!queryToRun) return;
 
     // Set tab running state
-    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, isRunning: true, error: null } : t));
+    setTabs(prev => prev.map(t => t.id === currentTabId ? { ...t, isRunning: true, error: null } : t));
 
     const startTime = Date.now();
     try {
       if (window.electronAPI?.executeQuery) {
-        const res = await window.electronAPI.executeQuery(queryToRun, maxRows);
+        const res = await window.electronAPI.executeQuery(queryToRun, maxRowsRef.current);
         const durationMs = Date.now() - startTime;
 
         if (res.success && res.data) {
           const queryRes = res.data;
-          setTabs(prev => prev.map(t => t.id === activeTabId ? {
+          setTabs(prev => prev.map(t => t.id === currentTabId ? {
             ...t,
             isRunning: false,
             result: queryRes,
@@ -396,7 +399,7 @@ export const App: React.FC = () => {
               saveWorkspaceNow(
                 activeConfigRef.current.id,
                 tabsRef.current,
-                activeTabIdRef.current,
+                currentTabId,
                 maxRowsRef.current,
                 newDb
               );
@@ -415,7 +418,7 @@ export const App: React.FC = () => {
           }
         } else {
           const errMsg = res.error || 'Error al ejecutar la consulta';
-          setTabs(prev => prev.map(t => t.id === activeTabId ? {
+          setTabs(prev => prev.map(t => t.id === currentTabId ? {
             ...t,
             isRunning: false,
             error: errMsg,
@@ -437,31 +440,49 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       const errMsg = err.message || 'Error inesperado';
-      setTabs(prev => prev.map(t => t.id === activeTabId ? {
+      setTabs(prev => prev.map(t => t.id === currentTabId ? {
         ...t,
         isRunning: false,
         error: errMsg,
         activeResultTab: 'messages'
       } : t));
     }
-  };
+  }, [refreshSchema, saveWorkspaceNow]);
 
-  // Keyboard shortcut listener (Ctrl+N, Ctrl+T, Ctrl+W)
+  // Keyboard shortcut listener (Ctrl+N, Ctrl+T, Ctrl+W, F9, F5, Ctrl+Enter)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
       if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 't')) {
         e.preventDefault();
         handleAddTab();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
+        return;
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
         e.preventDefault();
-        if (tabs.length > 1) {
-          handleCloseTab(activeTabId, e as any);
+        if (tabsRef.current.length > 1) {
+          handleCloseTab(activeTabIdRef.current, e as any);
+        }
+        return;
+      }
+
+      const isExecKey = (!swapF9F5 && e.key === 'F9') || (swapF9F5 && e.key === 'F5');
+      const isCtrlEnter = (e.ctrlKey || e.metaKey) && e.key === 'Enter';
+
+      if (isExecKey || isCtrlEnter) {
+        const isMonaco = target && Boolean(target.closest('.monaco-editor'));
+        if (!isMonaco && !isInput) {
+          e.preventDefault();
+          handleExecute();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [tabs, activeTabId]);
+  }, [swapF9F5, handleAddTab, handleCloseTab, handleExecute]);
 
   // Resizing sidebar
   const handleSidebarMouseDown = () => {

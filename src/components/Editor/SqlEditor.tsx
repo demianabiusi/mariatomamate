@@ -19,7 +19,7 @@ import {
 interface SqlEditorProps {
   sql: string;
   onChange: (value: string) => void;
-  onExecute: (selectedOnly?: boolean) => void;
+  onExecute: (customQuery?: string) => void;
   isRunning: boolean;
   maxRows: number;
   onChangeMaxRows: (val: number) => void;
@@ -43,6 +43,17 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const executeKey = swapF9F5 ? 'F5' : 'F9';
+
+  // Refs to prevent stale closures inside Monaco callbacks
+  const onExecuteRef = useRef(onExecute);
+  useEffect(() => {
+    onExecuteRef.current = onExecute;
+  }, [onExecute]);
+
+  const swapF9F5Ref = useRef(swapF9F5);
+  useEffect(() => {
+    swapF9F5Ref.current = swapF9F5;
+  }, [swapF9F5]);
 
   const schemaRef = useRef(schema);
   useEffect(() => {
@@ -245,30 +256,26 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       const selection = editor.getSelection();
       const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
-      if (selectedText && selectedText.trim()) {
-        onExecute(true);
-      } else {
-        onExecute(false);
-      }
+      onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : undefined);
     });
 
     // F9 key handling
     editor.addCommand(monaco.KeyCode.F9, () => {
-      if (swapF9F5) {
+      if (swapF9F5Ref.current) {
         // When swapped, F9 acts as Refresh or not Execute
-      } else {
-        const selection = editor.getSelection();
-        const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
-        onExecute(Boolean(selectedText && selectedText.trim()));
+        return;
       }
+      const selection = editor.getSelection();
+      const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
+      onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : undefined);
     });
 
     // F5 key handling
     editor.addCommand(monaco.KeyCode.F5, () => {
-      if (swapF9F5) {
+      if (swapF9F5Ref.current) {
         const selection = editor.getSelection();
         const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
-        onExecute(Boolean(selectedText && selectedText.trim()));
+        onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : undefined);
       }
     });
   };
@@ -303,7 +310,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
         {/* Left Actions: Run, Run Selected */}
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => onExecute(false)}
+            onClick={() => onExecute()}
             disabled={isRunning}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg shadow-sm transition-all ${
               isRunning
@@ -320,7 +327,11 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
           </button>
 
           <button
-            onClick={() => onExecute(true)}
+            onClick={() => {
+              const selection = editorRef.current?.getSelection();
+              const selectedText = selection ? editorRef.current?.getModel()?.getValueInRange(selection) : '';
+              onExecute(selectedText && selectedText.trim() ? selectedText.trim() : undefined);
+            }}
             disabled={isRunning}
             className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 text-xs rounded-lg border border-zinc-700/80 transition-colors"
             title="Ejecutar sólo el texto seleccionado"
