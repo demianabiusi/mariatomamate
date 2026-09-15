@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import appIconUrl from '../../public/icon.svg';
+import packageInfo from '../../package.json';
 import { ConnectionConfig } from '../types';
 import { useTranslation } from '../i18n/I18nContext';
 import { 
@@ -58,7 +59,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               Maria Toma <span className="text-emerald-400">Mate</span>
               <span className="text-xs">🧉</span>
               <span className="text-[10px] font-normal px-1.5 py-0.2 bg-zinc-800 text-zinc-400 rounded">
-                {t('navbar.brandSubtitle')}
+                v{packageInfo.version}
               </span>
             </h1>
           </div>
