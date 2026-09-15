@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { SshTunnelService, SshTunnelConfig, ActiveSshTunnel } from './ssh-tunnel-service';
 
 export interface MySqlConnectionOptions {
   id?: string;
@@ -10,6 +11,7 @@ export interface MySqlConnectionOptions {
   database?: string;
   charset?: string;
   ssl?: boolean | { rejectUnauthorized?: boolean };
+  ssh?: SshTunnelConfig;
   connectTimeout?: number;
 }
 
@@ -57,6 +59,8 @@ export interface MySqlTableDetails {
 export class MariaDbService {
   private activeConnection: mysql.Connection | null = null;
   private currentConfig: MySqlConnectionOptions | null = null;
+  private activeTunnel: ActiveSshTunnel | null = null;
+  private sshTunnelService: SshTunnelService = new SshTunnelService();
 
   public isConnected(): boolean {
     return this.activeConnection !== null;
@@ -66,10 +70,14 @@ export class MariaDbService {
     return this.currentConfig;
   }
 
-  private buildConnectionConfig(options: MySqlConnectionOptions): mysql.ConnectionOptions {
+  public getSshTunnelService(): SshTunnelService {
+    return this.sshTunnelService;
+  }
+
+  private buildConnectionConfig(options: MySqlConnectionOptions, overrideHostPort?: { host: string; port: number }): mysql.ConnectionOptions {
     const config: mysql.ConnectionOptions = {
-      host: options.host || '127.0.0.1',
-      port: Number(options.port) || 3306,
+      host: overrideHostPort?.host || options.host || '127.0.0.1',
+      port: overrideHostPort?.port || Number(options.port) || 3306,
       user: options.user || 'root',
       password: options.password || '',
       charset: options.charset || 'UTF8MB4',
@@ -100,8 +108,33 @@ export class MariaDbService {
   }> {
     const start = Date.now();
     let conn: mysql.Connection | null = null;
+    let tempTunnel: ActiveSshTunnel | null = null;
+
     try {
-      const connConfig = this.buildConnectionConfig(options);
+      let hostPortOverride: { host: string; port: number } | undefined;
+
+      // Si tiene túnel SSH habilitado, inicializar túnel temporal para el test
+      if (options.ssh && options.ssh.enabled) {
+        try {
+          tempTunnel = await this.sshTunnelService.createTunnel(
+            options.ssh,
+            options.host || '127.0.0.1',
+            options.port || 3306
+          );
+          hostPortOverride = {
+            host: tempTunnel.localHost,
+            port: tempTunnel.localPort
+          };
+        } catch (sshErr: any) {
+          return {
+            success: false,
+            message: `Error al abrir túnel SSH: ${sshErr.message}`,
+            pingMs: Date.now() - start
+          };
+        }
+      }
+
+      const connConfig = this.buildConnectionConfig(options, hostPortOverride);
       conn = await mysql.createConnection(connConfig);
       
       const [rows] = await conn.query('SELECT VERSION() AS version, CURRENT_USER() AS user');
@@ -109,9 +142,13 @@ export class MariaDbService {
       const version = Array.isArray(rows) && (rows[0] as any)?.version ? String((rows[0] as any).version) : '';
       
       await conn.end();
+      conn = null;
+
+      const sshSuffix = options.ssh?.enabled ? ' (vía túnel SSH 🔐)' : '';
+
       return {
         success: true,
-        message: `¡Conexión exitosa a ${version ? `MariaDB/MySQL v${version}` : 'la base de datos'}!`,
+        message: `¡Conexión exitosa a ${version ? `MariaDB/MySQL v${version}` : 'la base de datos'}${sshSuffix}!`,
         pingMs,
         serverVersion: version
       };
@@ -125,51 +162,98 @@ export class MariaDbService {
         message: err.message || String(err),
         pingMs
       };
+    } finally {
+      if (tempTunnel) {
+        try {
+          await tempTunnel.close();
+        } catch (closeErr) {
+          console.warn('Error closing temporary SSH tunnel after test:', closeErr);
+        }
+      }
     }
   }
 
   public async connect(options: MySqlConnectionOptions): Promise<void> {
-    if (this.activeConnection) {
+    if (this.activeConnection || this.activeTunnel) {
       await this.disconnect();
     }
 
-    const connConfig = this.buildConnectionConfig(options);
-    const conn = await mysql.createConnection(connConfig);
+    let hostPortOverride: { host: string; port: number } | undefined;
 
-    // Keep connection alive with error listener
-    conn.on('error', (err) => {
-      console.error('MySQL connection error:', err);
-      if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        this.activeConnection = null;
-      }
-    });
-
-    this.activeConnection = conn;
-    this.currentConfig = { ...options };
-
-    // If database wasn't specified, pick the first non-system DB if available
-    if (!this.currentConfig.database) {
+    // Si tiene túnel SSH habilitado, crear túnel persistente para la sesión
+    if (options.ssh && options.ssh.enabled) {
       try {
-        const dbs = await this.getDatabases();
-        const nonSystem = dbs.find(d => !['information_schema', 'mysql', 'performance_schema', 'sys'].includes(d.toLowerCase()));
-        if (nonSystem) {
-          await this.switchDatabase(nonSystem);
-        }
-      } catch {
-        // Ignore if error listing DBs initially
+        this.activeTunnel = await this.sshTunnelService.createTunnel(
+          options.ssh,
+          options.host || '127.0.0.1',
+          options.port || 3306
+        );
+        hostPortOverride = {
+          host: this.activeTunnel.localHost,
+          port: this.activeTunnel.localPort
+        };
+      } catch (sshErr: any) {
+        throw new Error(`Fallo al establecer túnel SSH: ${sshErr.message}`);
       }
+    }
+
+    try {
+      const connConfig = this.buildConnectionConfig(options, hostPortOverride);
+      const conn = await mysql.createConnection(connConfig);
+
+      // Keep connection alive with error listener
+      conn.on('error', (err) => {
+        console.error('MySQL connection error:', err);
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+          this.activeConnection = null;
+        }
+      });
+
+      this.activeConnection = conn;
+      this.currentConfig = { ...options };
+
+      // If database wasn't specified, pick the first non-system DB if available
+      if (!this.currentConfig.database) {
+        try {
+          const dbs = await this.getDatabases();
+          const nonSystem = dbs.find(d => !['information_schema', 'mysql', 'performance_schema', 'sys'].includes(d.toLowerCase()));
+          if (nonSystem) {
+            await this.switchDatabase(nonSystem);
+          }
+        } catch {
+          // Ignore if error listing DBs initially
+        }
+      }
+    } catch (mysqlErr: any) {
+      // Si falló la conexión mysql, cerrar el túnel SSH activo
+      if (this.activeTunnel) {
+        try {
+          await this.activeTunnel.close();
+        } catch {}
+        this.activeTunnel = null;
+      }
+      throw mysqlErr;
     }
   }
 
   public async disconnect(): Promise<void> {
-    if (!this.activeConnection) return;
     try {
-      await this.activeConnection.end();
+      if (this.activeConnection) {
+        await this.activeConnection.end();
+      }
     } catch (err) {
       console.warn('Error closing connection:', err);
     } finally {
       this.activeConnection = null;
       this.currentConfig = null;
+      if (this.activeTunnel) {
+        try {
+          await this.activeTunnel.close();
+        } catch (tunnelErr) {
+          console.warn('Error closing SSH tunnel during disconnect:', tunnelErr);
+        }
+        this.activeTunnel = null;
+      }
     }
   }
 

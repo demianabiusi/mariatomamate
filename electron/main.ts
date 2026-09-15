@@ -244,6 +244,33 @@ ipcMain.handle('db:test-connection', async (_, config) => {
   }
 });
 
+ipcMain.handle('ssh:test-tunnel', async (_, sshConfig) => {
+  try {
+    const res = await mariaService.getSshTunnelService().testSshConnection(sshConfig);
+    return {
+      success: res.success,
+      data: { message: res.message, pingMs: res.pingMs, banner: res.banner },
+      error: res.success ? undefined : res.message
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al probar túnel SSH' };
+  }
+});
+
+ipcMain.handle('dialog:select-ssh-key', async () => {
+  if (!mainWindow) return null;
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Seleccionar archivo de clave privada SSH',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Claves Privadas SSH (*.pem, *.id_rsa, *.key, *)', extensions: ['pem', 'id_rsa', 'key', 'id_ed25519', 'id_ecdsa', 'id_dsa', 'ppk', '*'] },
+      { name: 'Todos los archivos (*.*)', extensions: ['*'] }
+    ]
+  });
+  if (canceled || filePaths.length === 0) return null;
+  return filePaths[0];
+});
+
 ipcMain.handle('db:connect', async (_, config) => {
   try {
     await mariaService.connect(config);

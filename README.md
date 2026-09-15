@@ -69,6 +69,12 @@ En el día a día con MariaDB y MySQL, los desarrolladores suelen enfrentarse a:
 - **Persistencia de Ventana:** Recuerda tamaño, posición en pantalla y si estaba maximizada.
 - **Auto-reconexión al iniciar:** Reconecta automáticamente a la última conexión activa al iniciar la app.
 
+### 🔐 Conexiones Seguras con Túnel SSH (Bastion / Jump Host)
+- **Túneles SSH Integrados:** Conectate a bases de datos alojadas en servidores privados (VPC, AWS RDS, DigitalOcean, VPS) a través de un servidor intermedio SSH.
+- **Autenticación SSH Flexible:** Soporta autenticación por contraseña o archivo de clave privada (`.pem`, `.id_rsa`, `.key`, OpenSSH, Ed25519) con frase de paso (passphrase) opcional y selector de archivos nativo.
+- **Prueba Independiente de Túnel:** Botón dedicado para probar la conexión SSH y medir la latencia antes de intentar conectar la base de datos.
+- **Guardado Automático:** Los parámetros del túnel SSH quedan guardados en cada perfil de conexión.
+
 ---
 
 ## 🛠️ Desarrollo y Compilación

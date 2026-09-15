@@ -120,6 +120,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-semibold text-zinc-200">{activeConfig.name}</span>
             <span className="text-zinc-500">({activeConfig.host}:{activeConfig.port})</span>
+            {activeConfig.ssh?.enabled && (
+              <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded text-[10px] font-mono font-bold" title={`Túnel SSH activo hacia ${activeConfig.ssh.user}@${activeConfig.ssh.host}:${activeConfig.ssh.port}`}>
+                SSH
+              </span>
+            )}
             {activeDatabase && (
               <>
                 <span className="text-zinc-600">•</span>

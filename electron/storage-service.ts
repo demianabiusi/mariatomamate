@@ -2,6 +2,8 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { SshTunnelConfig } from './ssh-tunnel-service';
+
 export interface SavedConnection {
   id: string;
   name: string;
@@ -12,6 +14,7 @@ export interface SavedConnection {
   database?: string;
   charset: string;
   ssl?: boolean;
+  ssh?: SshTunnelConfig;
   createdAt?: string;
 }
 

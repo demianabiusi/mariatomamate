@@ -22,6 +22,12 @@ Fue construido utilizando el cliente Firebird (FirebirdYog) como referencia arqu
 
 ### A. Conectividad y Multi-Esquema
 - Conexión a servidores MariaDB y MySQL por host, puerto (por defecto 3306), usuario, contraseña, base de datos inicial opcional y SSL.
+- **Túneles SSH (Bastion / Jump host):**
+  - Canalización segura de conexiones MariaDB y MySQL a través de servidores SSH intermedios (`ssh2`).
+  - Métodos de autenticación SSH: Contraseña o Archivo de Clave Privada (`.pem`, `.id_rsa`, `.key`, OpenSSH, Ed25519) con soporte de frase de paso (passphrase) y selector de archivo nativo.
+  - Herramienta para probar la conectividad del túnel SSH de forma independiente con cálculo de latencia (ping).
+  - Persistencia de credenciales y configuración del túnel SSH en el perfil guardado.
+  - Indicadores visuales interactivos de estado `SSH` en la barra de navegación y en la lista de conexiones.
 - Soporte para **múltiples bases de datos** en un mismo servidor:
   - Listado automático de bases de datos (`SHOW DATABASES`).
   - Selector desplegable en el sidebar para cambiar de base activa al instante.

@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveConnection: (config: any) => ipcRenderer.invoke('db:save-connection', config),
   deleteConnection: (id: string) => ipcRenderer.invoke('db:delete-connection', id),
   testConnection: (config: any) => ipcRenderer.invoke('db:test-connection', config),
+  testSshTunnel: (config: any) => ipcRenderer.invoke('ssh:test-tunnel', config),
+  selectSshKeyFile: () => ipcRenderer.invoke('dialog:select-ssh-key'),
   connect: (config: any) => ipcRenderer.invoke('db:connect', config),
   disconnect: () => ipcRenderer.invoke('db:disconnect'),
   getConnectionStatus: () => ipcRenderer.invoke('db:get-status'),
