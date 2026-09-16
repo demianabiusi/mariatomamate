@@ -42,7 +42,14 @@
     "disconnect": "Desconectar",
     "disconnectTooltip": "Desconectar sesión actual",
     "language": "Idioma",
+    "theme": "Estilo",
+    "themeTooltip": "Cambiar estilo visual (Claro / Oscuro)",
     "activeDatabase": "Base activa:"
+  },
+  "theme": {
+    "title": "Estilo visual",
+    "light": "Claro",
+    "dark": "Oscuro"
   },
   "sidebar": {
     "databases": "Bases de Datos",

@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import Editor, { OnMount, loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
 import { useTranslation } from '../../i18n/I18nContext';
+import { useTheme } from '../../theme/ThemeContext';
 
 // Ensure Monaco uses local offline bundle
 loader.config({ monaco });
@@ -40,6 +41,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   schema
 }) => {
   const { t } = useTranslation();
+  const { theme } = useTheme();
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const executeKey = swapF9F5 ? 'F5' : 'F9';
@@ -421,7 +423,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
         <Editor
           height="100%"
           defaultLanguage="sql"
-          theme="vs-dark"
+          theme={theme === 'light' ? 'vs' : 'vs-dark'}
           value={sql}
           onChange={(val) => onChange(val || '')}
           onMount={handleEditorDidMount}

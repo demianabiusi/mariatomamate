@@ -3,6 +3,7 @@ import appIconUrl from '../../public/icon.svg';
 import packageInfo from '../../package.json';
 import { ConnectionConfig } from '../types';
 import { useTranslation } from '../i18n/I18nContext';
+import { useTheme } from '../theme/ThemeContext';
 import { 
   Database, 
   Unplug, 
@@ -12,7 +13,9 @@ import {
   Upload, 
   Globe, 
   ChevronDown,
-  FolderPlus
+  FolderPlus,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -40,6 +43,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { t, language, setLanguage, availableLanguages } = useTranslation();
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const { theme, setTheme, availableThemes } = useTheme();
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
 
   const currentLang = availableLanguages.find(l => l.code === language) || availableLanguages[0];
 
@@ -183,6 +188,59 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <span>{lang.flag}</span>
                     <span>{lang.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Theme Selector Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+            className="flex items-center gap-1.5 px-2 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg text-xs font-medium transition-colors"
+            title={t('navbar.themeTooltip')}
+          >
+            {theme === 'light' ? (
+              <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
+            ) : (
+              <Moon className="w-3.5 h-3.5 text-indigo-400 fill-indigo-400/20" />
+            )}
+            <span className="text-[11px] font-medium hidden sm:inline">
+              {t(`theme.${theme}`)}
+            </span>
+            <ChevronDown className="w-3 h-3 text-zinc-500" />
+          </button>
+
+          {isThemeMenuOpen && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setIsThemeMenuOpen(false)} 
+              />
+              <div className="absolute right-0 mt-1.5 z-50 w-32 bg-zinc-900 border border-zinc-700/80 rounded-lg shadow-xl py-1 divide-y divide-zinc-800/60 animate-in fade-in zoom-in-95 duration-100">
+                {availableThemes.map((th) => (
+                  <button
+                    key={th.id}
+                    type="button"
+                    onClick={() => {
+                      setTheme(th.id);
+                      setIsThemeMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors ${
+                      theme === th.id
+                        ? 'bg-emerald-500/15 text-emerald-400 font-semibold'
+                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
+                    }`}
+                  >
+                    {th.id === 'light' ? (
+                      <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    ) : (
+                      <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                    )}
+                    <span>{t(th.nameKey)}</span>
                   </button>
                 ))}
               </div>

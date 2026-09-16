@@ -42,7 +42,14 @@
     "disconnect": "Disconnect",
     "disconnectTooltip": "Disconnect current session",
     "language": "Language",
+    "theme": "Theme",
+    "themeTooltip": "Change visual theme (Light / Dark)",
     "activeDatabase": "Active DB:"
+  },
+  "theme": {
+    "title": "Visual Theme",
+    "light": "Light",
+    "dark": "Dark"
   },
   "sidebar": {
     "databases": "Databases",
