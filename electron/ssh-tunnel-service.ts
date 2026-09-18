@@ -21,6 +21,7 @@ export interface ActiveSshTunnel {
   targetHost: string;
   targetPort: number;
   close: () => Promise<void>;
+  isAlive?: () => boolean;
 }
 
 export class SshTunnelService {
@@ -209,8 +210,11 @@ export class SshTunnelService {
 
     // 2. Crear servidor TCP local en 127.0.0.1:0
     const activeSockets = new Set<net.Socket>();
+    let isTunnelAlive = true;
 
     const localServer = net.createServer((socket) => {
+      // Keepalive en el socket TCP para prevenir timeouts por inactividad
+      socket.setKeepAlive(true, 10000);
       activeSockets.add(socket);
 
       const cleanupSocket = () => {
@@ -263,8 +267,10 @@ export class SshTunnelService {
     // Manejar desconexión SSH imprevista
     client.on('error', (err) => {
       console.warn('SSH client error during active tunnel session:', err.message);
+      isTunnelAlive = false;
     });
     client.on('close', () => {
+      isTunnelAlive = false;
       for (const s of activeSockets) {
         try { s.destroy(); } catch {}
       }
@@ -273,13 +279,21 @@ export class SshTunnelService {
         localServer.close();
       } catch {}
     });
+    localServer.on('close', () => {
+      isTunnelAlive = false;
+    });
+    localServer.on('error', () => {
+      isTunnelAlive = false;
+    });
 
     const activeTunnel: ActiveSshTunnel = {
       localHost: '127.0.0.1',
       localPort,
       targetHost: finalTargetHost,
       targetPort: finalTargetPort,
+      isAlive: () => isTunnelAlive && localServer.listening,
       close: async () => {
+        isTunnelAlive = false;
         // Destruir sockets activos
         for (const s of activeSockets) {
           try {

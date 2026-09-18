@@ -108,8 +108,12 @@ export class DumpService {
     this.isCancelled = false;
     const startTime = Date.now();
 
-    const conn = (this.mariaService as any).activeConnection;
-    if (!conn) {
+    this.mariaService.setBusy(true);
+    let conn: any;
+    try {
+      conn = await this.mariaService.ensureConnection();
+    } catch {
+      this.mariaService.setBusy(false);
       throw new Error('No hay una conexión activa para exportar.');
     }
 
@@ -408,6 +412,8 @@ export class DumpService {
     } catch (err: any) {
       writeStream.end();
       throw err;
+    } finally {
+      this.mariaService.setBusy(false);
     }
   }
 
@@ -422,12 +428,17 @@ export class DumpService {
       throw new Error(`El archivo '${options.filePath}' no existe.`);
     }
 
-    const conn = (this.mariaService as any).activeConnection;
-    if (!conn) {
+    this.mariaService.setBusy(true);
+    let conn: any;
+    try {
+      conn = await this.mariaService.ensureConnection();
+    } catch {
+      this.mariaService.setBusy(false);
       throw new Error('No hay conexión activa a la base de datos.');
     }
 
-    const stat = fs.statSync(options.filePath);
+    try {
+      const stat = fs.statSync(options.filePath);
     const totalBytes = stat.size;
 
     const fileStream = fs.createReadStream(options.filePath, { encoding: 'utf-8' });
@@ -558,13 +569,16 @@ export class DumpService {
       message: `¡Importación finalizada! ${statementsExecuted} sentencias ejecutadas en ${(durationMs / 1000).toFixed(1)}s.`
     });
 
-    return {
-      success: errors.length === 0,
-      totalStatements: statementsExecuted + errors.length,
-      executedStatements: statementsExecuted,
-      errorsCount: errors.length,
-      errors,
-      durationMs
-    };
+      return {
+        success: errors.length === 0,
+        totalStatements: statementsExecuted + errors.length,
+        executedStatements: statementsExecuted,
+        errorsCount: errors.length,
+        errors,
+        durationMs
+      };
+    } finally {
+      this.mariaService.setBusy(false);
+    }
   }
 }
