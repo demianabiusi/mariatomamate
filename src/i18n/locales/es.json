@@ -129,7 +129,21 @@
     "noRows": "La consulta no devolvió filas de datos.",
     "inspectCell": "Inspeccionar Contenido de la Celda",
     "clearHistory": "Limpiar Historial",
-    "historyEmpty": "Aún no se han ejecutado consultas en esta sesión."
+    "historyEmpty": "Aún no se han ejecutado consultas en esta sesión.",
+    "editCell": "Modificar valor",
+    "editCellTooltip": "Modificar valor directamente en la tabla",
+    "saveEdit": "Guardar cambios",
+    "cancelEdit": "Cancelar edición",
+    "setNull": "Establecer como NULL",
+    "unsetNull": "Quitar NULL",
+    "editablePkBadge": "Editable (PK detectada)",
+    "editablePkTooltip": "La consulta incluye Clave Primaria (PK). Las modificaciones en celdas son 100% directas y seguras.",
+    "editableVerifiedBadge": "Editable (verificación de unicidad)",
+    "editableVerifiedTooltip": "La consulta no incluye Clave Primaria, pero Maria Toma Mate verificará automáticamente la unicidad antes de modificar.",
+    "updateSuccessPk": "Fila modificada con éxito (usando Clave Primaria).",
+    "updateSuccessVerified": "Fila modificada con éxito (unicidad verificada).",
+    "safetyDialogTitle": "Control de Seguridad de Modificación",
+    "safetyDialogNote": "Para garantizar la integridad de tus datos, Maria Toma Mate verifica automáticamente que cada actualización afecte únicamente a la fila seleccionada y no modifique otros registros por accidente."
   },
   "connectionModal": {
     "title": "Gestor de Conexiones MariaDB & MySQL",

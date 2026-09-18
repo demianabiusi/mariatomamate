@@ -129,7 +129,21 @@
     "noRows": "Query returned no rows.",
     "inspectCell": "Inspect Cell Content",
     "clearHistory": "Clear History",
-    "historyEmpty": "No queries have been executed in this session yet."
+    "historyEmpty": "No queries have been executed in this session yet.",
+    "editCell": "Edit value",
+    "editCellTooltip": "Edit value directly in the table",
+    "saveEdit": "Save changes",
+    "cancelEdit": "Cancel editing",
+    "setNull": "Set as NULL",
+    "unsetNull": "Unset NULL",
+    "editablePkBadge": "Editable (PK detected)",
+    "editablePkTooltip": "Query includes Primary Key (PK). Cell modifications are 100% direct and safe.",
+    "editableVerifiedBadge": "Editable (uniqueness verification)",
+    "editableVerifiedTooltip": "Query does not include Primary Key, but Maria Toma Mate will automatically verify uniqueness before updating.",
+    "updateSuccessPk": "Row updated successfully (using Primary Key).",
+    "updateSuccessVerified": "Row updated successfully (uniqueness verified).",
+    "safetyDialogTitle": "Data Modification Safety Guard",
+    "safetyDialogNote": "To guarantee data integrity, Maria Toma Mate automatically verifies that each update touches only the selected row and prevents accidental modification of other records."
   },
   "connectionModal": {
     "title": "MariaDB & MySQL Connection Manager",

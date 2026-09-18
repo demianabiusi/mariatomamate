@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Query & Script Execution
   executeQuery: (sql: string, maxRows?: number) => ipcRenderer.invoke('db:execute-query', sql, maxRows),
   executeScript: (script: string) => ipcRenderer.invoke('db:execute-script', script),
+  updateCell: (params: any) => ipcRenderer.invoke('db:update-cell', params),
   
   // File dialogs
   saveSqlFile: (content: string, defaultPath?: string) => ipcRenderer.invoke('dialog:save-sql-file', content, defaultPath),

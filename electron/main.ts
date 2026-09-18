@@ -382,6 +382,15 @@ ipcMain.handle('db:execute-script', async (_, script: string) => {
   }
 });
 
+ipcMain.handle('db:update-cell', async (_, params: any) => {
+  try {
+    const data = await mariaService.updateCell(params);
+    return { success: true, data };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al actualizar registro' };
+  }
+});
+
 // IPC: File Dialogs
 ipcMain.handle('dialog:save-sql-file', async (_, content: string, defaultPath?: string) => {
   if (!mainWindow) return false;

@@ -15,15 +15,20 @@ import {
   FileJson,
   FileText,
   Clock,
-  Layers
+  Layers,
+  Pencil,
+  Key,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 
 interface DataGridProps {
   result: QueryResult | null;
   isRunning: boolean;
+  onRowUpdated?: (newRow: Record<string, any>, sql: string) => void;
 }
 
-export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning }) => {
+export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpdated }) => {
   const { t } = useTranslation();
   const [filterText, setFilterText] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -34,10 +39,112 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning }) => {
   const [cellModalValue, setCellModalValue] = useState<{ col: string; value: any } | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
+  // Cell editing state
+  const [editingCell, setEditingCell] = useState<{
+    row: Record<string, any>;
+    col: string;
+    val: string;
+    isNull: boolean;
+    isSaving: boolean;
+  } | null>(null);
+  const [flashCell, setFlashCell] = useState<{ row: Record<string, any>; col: string } | null>(null);
+  const [safetyError, setSafetyError] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [mutationEpoch, setMutationEpoch] = useState(0);
+
   React.useEffect(() => {
     setCurrentPage(1);
     setFilterText('');
+    setEditingCell(null);
+    setFlashCell(null);
+    setSafetyError(null);
   }, [result]);
+
+  const hasEditableTable = useMemo(() => {
+    return Boolean(result?.fieldsMeta?.some(f => Boolean(f.orgTable)));
+  }, [result?.fieldsMeta]);
+
+  const hasPrimaryKey = useMemo(() => {
+    return Boolean(result?.fieldsMeta?.some(f => Boolean(f.isPrimary)));
+  }, [result?.fieldsMeta]);
+
+  const handleStartEdit = (row: Record<string, any>, col: string) => {
+    const rawVal = row[col];
+    const isNull = rawVal === null || rawVal === undefined;
+    setEditingCell({
+      row,
+      col,
+      val: isNull ? '' : String(rawVal),
+      isNull,
+      isSaving: false
+    });
+  };
+
+  const handleCommitCell = async () => {
+    if (!editingCell || editingCell.isSaving) return;
+
+    const { row, col, val, isNull } = editingCell;
+    const originalVal = row[col];
+    const originalIsNull = originalVal === null || originalVal === undefined;
+
+    // Check if unchanged
+    if (isNull === originalIsNull && (isNull || String(originalVal) === val)) {
+      setEditingCell(null);
+      return;
+    }
+
+    const colMeta = result?.fieldsMeta?.find(f => f.name === col);
+    if (!colMeta || !colMeta.orgTable) {
+      alert('Esta columna no pertenece a una tabla directa.');
+      setEditingCell(null);
+      return;
+    }
+
+    setEditingCell(prev => prev ? { ...prev, isSaving: true } : null);
+
+    try {
+      let parsedValue: any = isNull ? null : val;
+      if (!isNull && typeof originalVal === 'number' && !isNaN(Number(val)) && val.trim() !== '') {
+        parsedValue = Number(val);
+      }
+
+      const res = await window.electronAPI.updateCell({
+        db: colMeta.db,
+        table: colMeta.orgTable,
+        column: colMeta.orgName || col,
+        newValue: parsedValue,
+        oldRow: row,
+        fieldsMeta: result?.fieldsMeta
+      });
+
+      if (res.success && res.data) {
+        row[col] = parsedValue;
+        setMutationEpoch(v => v + 1);
+
+        setFlashCell({ row, col });
+        setTimeout(() => setFlashCell(null), 1200);
+
+        setSuccessToast(
+          res.data.usedStrategy === 'primary_key'
+            ? t('grid.updateSuccessPk')
+            : t('grid.updateSuccessVerified')
+        );
+        setTimeout(() => setSuccessToast(null), 3000);
+
+        if (onRowUpdated) {
+          onRowUpdated(row, res.data.sql);
+        }
+
+        setEditingCell(null);
+      } else {
+        setEditingCell(prev => prev ? { ...prev, isSaving: false } : null);
+        setSafetyError(res.error || 'Error al modificar los datos en la tabla.');
+      }
+    } catch (err: any) {
+      setEditingCell(prev => prev ? { ...prev, isSaving: false } : null);
+      setSafetyError(err.message || 'Error inesperado al intentar modificar el valor.');
+    }
+  };
 
   const handleSort = (col: string) => {
     if (sortCol === col) {
@@ -85,7 +192,7 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning }) => {
     }
 
     return rows;
-  }, [result?.rows, filterText, sortCol, sortAsc]);
+  }, [result?.rows, filterText, sortCol, sortAsc, mutationEpoch]);
 
   // Pagination
   const totalRows = filteredAndSortedRows.length;
@@ -170,6 +277,27 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning }) => {
               <span className="text-amber-400 font-semibold">(Limitado)</span>
             )}
           </div>
+
+          {/* Editable badge indicator */}
+          {hasPrimaryKey ? (
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[11px]" title={t('grid.editablePkTooltip')}>
+              <Key className="w-3 h-3 text-amber-400 shrink-0" />
+              <span>{t('grid.editablePkBadge')}</span>
+            </div>
+          ) : hasEditableTable ? (
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 bg-zinc-800/80 text-zinc-400 border border-zinc-700/80 rounded text-[11px]" title={t('grid.editableVerifiedTooltip')}>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span>{t('grid.editableVerifiedBadge')}</span>
+            </div>
+          ) : null}
+
+          {/* Success notification */}
+          {successToast && (
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded text-[11px] animate-in fade-in">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>{successToast}</span>
+            </div>
+          )}
         </div>
 
         {/* Right: Export Menu & Execution Time */}
@@ -232,20 +360,28 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning }) => {
               <th className="w-10 px-2 py-1.5 text-center text-zinc-500 font-normal border-r border-zinc-800">
                 #
               </th>
-              {result.columns.map((col) => (
-                <th
-                  key={col}
-                  onClick={() => handleSort(col)}
-                  className="px-3 py-1.5 text-zinc-300 font-semibold border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/80 transition-colors whitespace-nowrap group"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span>{col}</span>
-                    <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300">
-                      {sortCol === col ? (sortAsc ? '▲' : '▼') : '↕'}
-                    </span>
-                  </div>
-                </th>
-              ))}
+              {result.columns.map((col) => {
+                const meta = result.fieldsMeta?.find(f => f.name === col);
+                const isPk = Boolean(meta?.isPrimary);
+                return (
+                  <th
+                    key={col}
+                    onClick={() => handleSort(col)}
+                    className="px-3 py-1.5 text-zinc-300 font-semibold border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/80 transition-colors whitespace-nowrap group select-none"
+                    title={isPk ? `${col} (${t('grid.editablePkBadge') || 'Clave Primaria'})` : col}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {isPk && <Key className="w-3 h-3 text-amber-400 shrink-0" />}
+                        <span>{col}</span>
+                      </div>
+                      <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300">
+                        {sortCol === col ? (sortAsc ? '▲' : '▼') : '↕'}
+                      </span>
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-900/80 text-zinc-300">
@@ -263,30 +399,142 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning }) => {
                     const isCopied = copiedCell === cellKey;
                     const valStr = isNull ? 'NULL' : String(rawVal);
                     const isLongText = valStr.length > 50 || valStr.includes('\n');
+                    const colMeta = result.fieldsMeta?.find(f => f.name === col);
+                    const isEditable = Boolean(colMeta && colMeta.orgTable);
+                    const isEditing = editingCell?.row === row && editingCell?.col === col;
+                    const isFlashed = flashCell?.row === row && flashCell?.col === col;
+
+                    if (isEditing) {
+                      return (
+                        <td
+                          key={col}
+                          className="p-1 border-r border-emerald-500/80 bg-zinc-900 min-w-[170px] relative z-20 shadow-inner"
+                        >
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              autoFocus
+                              disabled={editingCell.isSaving}
+                              value={editingCell.isNull ? '' : editingCell.val}
+                              placeholder={editingCell.isNull ? 'NULL' : ''}
+                              onChange={(e) => {
+                                setEditingCell({
+                                  ...editingCell,
+                                  isNull: false,
+                                  val: e.target.value
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleCommitCell();
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  setEditingCell(null);
+                                }
+                              }}
+                              className={`w-full px-2 py-0.5 text-xs font-mono rounded bg-zinc-950 border focus:outline-none transition-all ${
+                                editingCell.isNull
+                                  ? 'text-amber-400 italic placeholder-amber-400/60 border-amber-500/60'
+                                  : 'text-zinc-100 border-emerald-500'
+                              }`}
+                            />
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={editingCell.isSaving}
+                                onClick={() => setEditingCell(prev => prev ? {
+                                  ...prev,
+                                  isNull: !prev.isNull,
+                                  val: prev.isNull ? '' : prev.val
+                                } : null)}
+                                className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition-colors ${
+                                  editingCell.isNull
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-200'
+                                }`}
+                                title={editingCell.isNull ? t('grid.unsetNull') : t('grid.setNull')}
+                              >
+                                NULL
+                              </button>
+                              <button
+                                type="button"
+                                disabled={editingCell.isSaving}
+                                onClick={handleCommitCell}
+                                className="p-1 text-emerald-400 hover:bg-emerald-500/20 rounded disabled:opacity-50 transition-colors"
+                                title={t('grid.saveEdit') || 'Guardar cambios (Enter)'}
+                              >
+                                {editingCell.isSaving ? (
+                                  <div className="w-3 h-3 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                                ) : (
+                                  <Check className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={editingCell.isSaving}
+                                onClick={() => setEditingCell(null)}
+                                className="p-1 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded disabled:opacity-50 transition-colors"
+                                title={t('grid.cancelEdit') || 'Cancelar (Esc)'}
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      );
+                    }
 
                     return (
                       <td
                         key={col}
-                        className={`px-3 py-1 border-r border-zinc-900/80 whitespace-nowrap max-w-xs truncate group relative ${
+                        onDoubleClick={() => {
+                          if (isEditable) {
+                            handleStartEdit(row, col);
+                          }
+                        }}
+                        className={`px-3 py-1 border-r border-zinc-900/80 whitespace-nowrap max-w-xs truncate group relative transition-colors ${
                           isNull ? 'text-zinc-600 italic' : ''
+                        } ${
+                          isFlashed ? 'bg-emerald-500/30 text-emerald-200 font-semibold' : ''
+                        } ${
+                          isEditable ? 'cursor-pointer hover:bg-zinc-800/40' : ''
                         }`}
-                        title={valStr}
+                        title={isEditable ? `${valStr} (${t('grid.editCellTooltip') || 'Doble clic para modificar'})` : valStr}
                       >
                         <span>{valStr}</span>
 
                         {/* Quick cell actions on hover */}
-                        <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-zinc-800 px-1 py-0.5 rounded shadow-md select-none">
+                        <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5 bg-zinc-800/95 border border-zinc-700/80 px-1 py-0.5 rounded shadow-lg select-none z-10">
+                          {isEditable && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartEdit(row, col);
+                              }}
+                              className="p-1 hover:text-emerald-400 text-zinc-400 rounded transition-colors"
+                              title={t('grid.editCell') || 'Modificar valor'}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          )}
                           <button
-                            onClick={() => copyToClipboard(valStr, cellKey)}
-                            className="p-1 hover:text-emerald-400 text-zinc-400 rounded"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyToClipboard(valStr, cellKey);
+                            }}
+                            className="p-1 hover:text-emerald-400 text-zinc-400 rounded transition-colors"
                             title={t('common.copy')}
                           >
                             {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                           </button>
                           {isLongText && (
                             <button
-                              onClick={() => setCellModalValue({ col, value: rawVal })}
-                              className="p-1 hover:text-amber-400 text-zinc-400 rounded"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCellModalValue({ col, value: rawVal });
+                              }}
+                              className="p-1 hover:text-amber-400 text-zinc-400 rounded transition-colors"
                               title={t('grid.inspectCell')}
                             >
                               <Maximize2 className="w-3 h-3" />
@@ -381,6 +629,42 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning }) => {
               <button
                 onClick={() => setCellModalValue(null)}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded text-xs transition-colors"
+              >
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety / Error Dialog */}
+      {safetyError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 select-none animate-in fade-in duration-150">
+          <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-zinc-200">
+            <div className="flex items-center justify-between px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 text-amber-400">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 shrink-0" />
+                <h3 className="font-semibold text-xs tracking-wide uppercase">{t('grid.safetyDialogTitle')}</h3>
+              </div>
+              <button
+                onClick={() => setSafetyError(null)}
+                className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-xs leading-relaxed text-zinc-300">
+              <p className="whitespace-pre-wrap font-sans text-red-300 bg-red-950/30 p-2.5 rounded-lg border border-red-900/40">
+                {safetyError}
+              </p>
+              <div className="p-2.5 bg-zinc-950/80 rounded-lg border border-zinc-800 text-[11px] text-zinc-400 leading-normal">
+                {t('grid.safetyDialogNote')}
+              </div>
+            </div>
+            <div className="px-4 py-2.5 bg-zinc-950 border-t border-zinc-800 flex justify-end">
+              <button
+                onClick={() => setSafetyError(null)}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
               >
                 {t('common.close')}
               </button>

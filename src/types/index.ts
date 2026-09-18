@@ -80,8 +80,20 @@ export interface TableDetails {
   ddl: string;
 }
 
+export interface ColumnMetadata {
+  name: string;
+  orgName: string;
+  table: string;
+  orgTable: string;
+  db: string;
+  type?: number;
+  flags?: number;
+  isPrimary?: boolean;
+}
+
 export interface QueryResult {
   columns: string[];
+  fieldsMeta?: ColumnMetadata[];
   rows: Record<string, any>[];
   rowCount: number;
   affectedRows?: number;
@@ -89,6 +101,23 @@ export interface QueryResult {
   executionTimeMs: number;
   sql: string;
   hasMore?: boolean;
+}
+
+export interface UpdateCellParams {
+  db?: string;
+  table: string;
+  column: string;
+  newValue: any;
+  oldRow: Record<string, any>;
+  fieldsMeta?: ColumnMetadata[];
+}
+
+export interface UpdateCellResult {
+  affectedRows: number;
+  changedRows?: number;
+  sql: string;
+  primaryKeysUsed: string[];
+  usedStrategy: 'primary_key' | 'full_row_match';
 }
 
 export interface QueryTab {
@@ -354,6 +383,7 @@ export interface ElectronAPI {
   // Query & Script execution
   executeQuery: (sql: string, maxRows?: number) => Promise<IpcResponse<QueryResult>>;
   executeScript: (script: string) => Promise<IpcResponse<{ statementsExecuted: number; results: QueryResult[] }>>;
+  updateCell: (params: UpdateCellParams) => Promise<IpcResponse<UpdateCellResult>>;
   
   // File dialogs & utilities
   saveSqlFile: (content: string, defaultPath?: string) => Promise<boolean>;

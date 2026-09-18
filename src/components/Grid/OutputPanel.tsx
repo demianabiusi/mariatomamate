@@ -21,6 +21,7 @@ interface OutputPanelProps {
   history: QueryHistoryItem[];
   onSelectHistorySql: (sql: string) => void;
   onClearHistory: () => void;
+  onRowUpdated?: (newRow: Record<string, any>, sql: string) => void;
 }
 
 export const OutputPanel: React.FC<OutputPanelProps> = ({
@@ -31,7 +32,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   onSelectTab,
   history,
   onSelectHistorySql,
-  onClearHistory
+  onClearHistory,
+  onRowUpdated
 }) => {
   const { t } = useTranslation();
 
@@ -101,7 +103,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
         
         {/* 1. Data Grid View */}
         {activeTab === 'grid' && (
-          <DataGrid result={result} isRunning={isRunning} />
+          <DataGrid result={result} isRunning={isRunning} onRowUpdated={onRowUpdated} />
         )}
 
         {/* 2. Messages Console View */}

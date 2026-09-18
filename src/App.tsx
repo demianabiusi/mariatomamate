@@ -451,6 +451,20 @@ export const App: React.FC = () => {
     }
   }, [refreshSchema, saveWorkspaceNow]);
 
+  const handleRowUpdated = useCallback((_newRow: Record<string, any>, sql: string) => {
+    setHistory(prev => [
+      {
+        id: 'hist_' + Date.now(),
+        sql,
+        timestamp: new Date().toLocaleTimeString(),
+        durationMs: 1,
+        status: 'success',
+        rowCount: 1
+      },
+      ...prev.slice(0, 150)
+    ]);
+  }, []);
+
   // Keyboard shortcut listener (Ctrl+N, Ctrl+T, Ctrl+W, F9, F5, Ctrl+Enter)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -710,6 +724,7 @@ export const App: React.FC = () => {
               history={history}
               onSelectHistorySql={(sql) => handleUpdateActiveSql(sql)}
               onClearHistory={() => setHistory([])}
+              onRowUpdated={handleRowUpdated}
             />
           </div>
 
