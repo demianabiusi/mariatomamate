@@ -56,5 +56,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_: any, data: any) => callback(data);
     ipcRenderer.on('db:import-progress', handler);
     return () => ipcRenderer.removeListener('db:import-progress', handler);
+  },
+
+  // Schema Diff & Comparison
+  getDatabasesForConnection: (config: any) => ipcRenderer.invoke('diff:get-databases', config),
+  compareSchemas: (req: any) => ipcRenderer.invoke('diff:compare-schemas', req),
+  generateMigrationScript: (diff: any, options: any) => ipcRenderer.invoke('diff:generate-script', { diff, options }),
+  applyMigrationScript: (req: any) => ipcRenderer.invoke('diff:apply-migration', req),
+  onCompareProgress: (callback: (progress: any) => void) => {
+    const handler = (_: any, data: any) => callback(data);
+    ipcRenderer.on('diff:compare-progress', handler);
+    return () => ipcRenderer.removeListener('diff:compare-progress', handler);
+  },
+  onMigrationProgress: (callback: (progress: any) => void) => {
+    const handler = (_: any, data: any) => callback(data);
+    ipcRenderer.on('diff:migration-progress', handler);
+    return () => ipcRenderer.removeListener('diff:migration-progress', handler);
   }
 });

@@ -11,6 +11,7 @@ import { CreateDatabaseModal } from './components/Modals/CreateDatabaseModal';
 import { TableDesignerModal } from './components/Modals/TableDesignerModal';
 import { DumpDatabaseModal } from './components/Modals/DumpDatabaseModal';
 import { ImportDatabaseModal } from './components/Modals/ImportDatabaseModal';
+import { SchemaDiffModal } from './components/Modals/SchemaDiffModal';
 import { Database, Plus, Sparkles } from 'lucide-react';
 import { useConnectionWorkspace } from './hooks/useConnectionWorkspace';
 
@@ -31,6 +32,7 @@ export const App: React.FC = () => {
   const [isCreateDbModalOpen, setIsCreateDbModalOpen] = useState(false);
   const [isDumpModalOpen, setIsDumpModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSchemaDiffModalOpen, setIsSchemaDiffModalOpen] = useState(false);
 
   // Workspace persistence
   const { hydrateWorkspace, saveWorkspaceNow, saveWorkspaceDebounced } = useConnectionWorkspace();
@@ -588,6 +590,7 @@ export const App: React.FC = () => {
         onOpenCreateDbModal={() => setIsCreateDbModalOpen(true)}
         onOpenDumpModal={() => setIsDumpModalOpen(true)}
         onOpenImportModal={() => setIsImportModalOpen(true)}
+        onOpenSchemaDiffModal={() => setIsSchemaDiffModalOpen(true)}
         onDisconnect={handleDisconnect}
         onNewQuery={handleAddTab}
       />
@@ -643,6 +646,7 @@ export const App: React.FC = () => {
               setActiveTabId(newId);
             }}
             onCreateDatabase={() => setIsCreateDbModalOpen(true)}
+            onOpenSchemaDiff={() => setIsSchemaDiffModalOpen(true)}
           />
         </div>
 
@@ -772,6 +776,28 @@ export const App: React.FC = () => {
         onClose={() => setIsImportModalOpen(false)}
         databaseName={activeDatabase || activeConfig?.database || 'mariadb'}
         onSuccessRefresh={refreshSchema}
+      />
+
+      <SchemaDiffModal
+        isOpen={isSchemaDiffModalOpen}
+        onClose={() => setIsSchemaDiffModalOpen(false)}
+        savedConnections={savedConnections}
+        activeConfig={activeConfig}
+        activeDatabase={activeDatabase}
+        onOpenInSqlEditor={(sql, title) => {
+          const newId = 'tab_' + Date.now();
+          setTabs(prev => [...prev, {
+            id: newId,
+            title: title || 'Migración SQL',
+            sql,
+            result: null,
+            isRunning: false,
+            error: null,
+            activeResultTab: 'grid'
+          }]);
+          setActiveTabId(newId);
+        }}
+        onRefreshActiveSchema={refreshSchema}
       />
 
     </div>

@@ -15,7 +15,8 @@ import {
   ChevronDown,
   FolderPlus,
   Sun,
-  Moon
+  Moon,
+  GitCompare
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -26,6 +27,7 @@ interface NavbarProps {
   onOpenCreateDbModal: () => void;
   onOpenDumpModal?: () => void;
   onOpenImportModal?: () => void;
+  onOpenSchemaDiffModal?: () => void;
   onDisconnect: () => void;
   onNewQuery: () => void;
 }
@@ -38,6 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateDbModal,
   onOpenDumpModal,
   onOpenImportModal,
+  onOpenSchemaDiffModal,
   onDisconnect,
   onNewQuery
 }) => {
@@ -115,6 +118,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Upload className="w-3.5 h-3.5 text-teal-400" />
             <span>{t('navbar.importSql')}</span>
+          </button>
+        )}
+
+        {/* Schema Diff / Compare Action */}
+        {onOpenSchemaDiffModal && (
+          <button
+            onClick={onOpenSchemaDiffModal}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-indigo-300 hover:text-indigo-200 text-xs rounded border border-zinc-800 hover:border-indigo-500/30 transition-colors"
+            title={t('navbar.compareSchemasTooltip')}
+          >
+            <GitCompare className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{t('navbar.compareSchemas')}</span>
           </button>
         )}
       </div>

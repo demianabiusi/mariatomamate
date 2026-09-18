@@ -24,7 +24,8 @@ import {
   FileText,
   Layers,
   Check,
-  FolderPlus
+  FolderPlus,
+  GitCompare
 } from 'lucide-react';
 
 interface ObjectTreeProps {
@@ -43,6 +44,7 @@ interface ObjectTreeProps {
   onCreateTrigger?: () => void;
   onCreateDatabase?: () => void;
   onDropDatabase?: (dbName: string) => void;
+  onOpenSchemaDiff?: () => void;
 }
 
 type ContextMenuItemType = 
@@ -84,7 +86,8 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
   onCreateView,
   onCreateTrigger,
   onCreateDatabase,
-  onDropDatabase
+  onDropDatabase,
+  onOpenSchemaDiff
 }) => {
   const { t } = useTranslation();
   const [searchFilter, setSearchFilter] = useState('');
@@ -207,6 +210,15 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                 title={t('sidebar.createDatabase')}
               >
                 <FolderPlus className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onOpenSchemaDiff && (
+              <button
+                onClick={onOpenSchemaDiff}
+                className="p-1 hover:text-indigo-400 text-zinc-400 hover:bg-zinc-800 rounded transition-colors"
+                title={t('schemaDiff.title')}
+              >
+                <GitCompare className="w-3.5 h-3.5" />
               </button>
             )}
             <button

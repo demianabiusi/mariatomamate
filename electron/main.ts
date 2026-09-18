@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { MariaDbService } from './mariadb-service';
 import { StorageService } from './storage-service';
 import { DumpService, DumpOptions, DumpProgress } from './dump-service';
+import { SchemaDiffService, SchemaCompareRequest, MigrationScriptOptions } from './schema-diff-service';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
@@ -11,6 +12,7 @@ let mainWindow: BrowserWindow | null = null;
 const mariaService = new MariaDbService();
 const storageService = new StorageService();
 const dumpService = new DumpService(mariaService);
+const schemaDiffService = new SchemaDiffService(mariaService);
 
 interface WindowState {
   x?: number;
@@ -501,4 +503,67 @@ ipcMain.handle('dialog:select-import-file', async () => {
   const filePath = filePaths[0];
   const stat = fs.statSync(filePath);
   return { filePath, size: stat.size, name: path.basename(filePath) };
+});
+
+// IPC: Schema Diff & Metadata Comparison
+ipcMain.handle('diff:get-databases', async (_, config: any) => {
+  try {
+    const databases = await schemaDiffService.getDatabasesForConnection(config);
+    return { success: true, data: databases };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al listar bases de datos para la conexión seleccionada' };
+  }
+});
+
+ipcMain.handle('diff:compare-schemas', async (_, req: SchemaCompareRequest) => {
+  try {
+    if (!req.sourceConfig || !req.sourceDatabase) {
+      throw new Error('Debe especificar la conexión y la base de datos de origen.');
+    }
+    if (!req.targetConfig || !req.targetDatabase) {
+      throw new Error('Debe especificar la conexión y la base de datos de destino.');
+    }
+
+    const diffResult = await schemaDiffService.compareDatabases(req, (progress) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('diff:compare-progress', progress);
+      }
+    });
+
+    return { success: true, data: diffResult };
+  } catch (err: any) {
+    console.error('Error in diff:compare-schemas:', err);
+    return { success: false, error: err.message || 'Error al comparar metadatos de las bases de datos' };
+  }
+});
+
+ipcMain.handle('diff:generate-script', async (_, { diff, options }: { diff: any; options: MigrationScriptOptions }) => {
+  try {
+    const script = schemaDiffService.generateMigrationScript(diff, options);
+    return { success: true, data: script };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al generar script de migración' };
+  }
+});
+
+ipcMain.handle('diff:apply-migration', async (_, { targetConfig, targetDatabase, script }: { targetConfig: any; targetDatabase: string; script: string }) => {
+  try {
+    const res = await schemaDiffService.executeMigration(
+      targetConfig,
+      targetDatabase,
+      script,
+      (progress) => {
+        if (mainWindow) {
+          mainWindow.webContents.send('diff:migration-progress', progress);
+        }
+      }
+    );
+    return { 
+      success: res.success, 
+      data: res, 
+      error: res.success ? undefined : `${res.errors.length} errores encontrados al ejecutar sentencias DDL.` 
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al aplicar script sobre la base de datos destino' };
+  }
 });

@@ -189,6 +189,141 @@ export interface ImportResult {
   durationMs: number;
 }
 
+// Schema Diff / Metadata Comparison types
+export type DiffStatus = 'missing_in_target' | 'extra_in_target' | 'different' | 'identical';
+
+export interface ColumnDiffItem {
+  name: string;
+  status: 'added' | 'removed' | 'modified';
+  sourceCol?: ColumnInfo;
+  targetCol?: ColumnInfo;
+  details: string[];
+  alterClause: string;
+}
+
+export interface IndexDiffItem {
+  name: string;
+  status: 'added' | 'removed' | 'modified';
+  sourceIndex?: TableIndexInfo;
+  targetIndex?: TableIndexInfo;
+  alterClause: string;
+}
+
+export interface ForeignKeyDiffItem {
+  name: string;
+  status: 'added' | 'removed' | 'modified';
+  sourceFk?: ForeignKeyInfo;
+  targetFk?: ForeignKeyInfo;
+  dropSql: string;
+  addSql: string;
+}
+
+export interface TableDiffItem {
+  name: string;
+  status: DiffStatus;
+  sourceTable?: any;
+  targetTable?: any;
+  columnDiffs: ColumnDiffItem[];
+  indexDiffs: IndexDiffItem[];
+  fkDiffs: ForeignKeyDiffItem[];
+  optionsDiff: {
+    engineChanged: boolean;
+    sourceEngine?: string;
+    targetEngine?: string;
+    collationChanged: boolean;
+    sourceCollation?: string;
+    targetCollation?: string;
+    commentChanged: boolean;
+    sourceComment?: string;
+    targetComment?: string;
+  };
+  createSql?: string;
+  dropSql?: string;
+}
+
+export interface GenericObjectDiffItem {
+  name: string;
+  type: 'VIEW' | 'PROCEDURE' | 'FUNCTION' | 'TRIGGER' | 'EVENT';
+  status: DiffStatus;
+  sourceDdl?: string;
+  targetDdl?: string;
+  createSql?: string;
+  dropSql?: string;
+}
+
+export interface SchemaDiffResult {
+  sourceConnectionName: string;
+  targetConnectionName: string;
+  sourceDb: string;
+  targetDb: string;
+  tables: TableDiffItem[];
+  views: GenericObjectDiffItem[];
+  procedures: GenericObjectDiffItem[];
+  functions: GenericObjectDiffItem[];
+  triggers: GenericObjectDiffItem[];
+  events: GenericObjectDiffItem[];
+  summary: {
+    totalDifferences: number;
+    missingInTarget: number;
+    extraInTarget: number;
+    modified: number;
+    identical: number;
+  };
+}
+
+export interface DiffCompareOptions {
+  ignoreComments?: boolean;
+  ignoreCollation?: boolean;
+  ignoreCase?: boolean;
+}
+
+export interface MigrationScriptOptions {
+  selectedTables?: Record<string, boolean>;
+  selectedViews?: Record<string, boolean>;
+  selectedProcedures?: Record<string, boolean>;
+  selectedFunctions?: Record<string, boolean>;
+  selectedTriggers?: Record<string, boolean>;
+  selectedEvents?: Record<string, boolean>;
+  includeDropTables?: boolean;
+  includeDropColumns?: boolean;
+  includeDropIndexes?: boolean;
+  includeDropForeignKeys?: boolean;
+  includeDropRoutines?: boolean;
+  includeDropTriggers?: boolean;
+  includeDropEvents?: boolean;
+  targetDatabaseOverride?: string;
+}
+
+export interface SchemaCompareRequest {
+  sourceConfig: ConnectionConfig;
+  sourceDatabase: string;
+  targetConfig: ConnectionConfig;
+  targetDatabase: string;
+  options?: DiffCompareOptions;
+}
+
+export interface CompareProgress {
+  stage: 'connect_source' | 'inspect_source' | 'connect_target' | 'inspect_target' | 'diffing' | 'complete';
+  percentage: number;
+  message: string;
+}
+
+export interface MigrationProgress {
+  totalStatements: number;
+  executedStatements: number;
+  percentage: number;
+  currentStatementSnippet: string;
+  errorsCount: number;
+  message: string;
+}
+
+export interface MigrationExecutionResult {
+  success: boolean;
+  statementsExecuted: number;
+  errors: { statementSnippet: string; error: string }[];
+  durationMs: number;
+}
+
 export interface ElectronAPI {
   // Connection management
   getSavedConnections: () => Promise<ConnectionConfig[]>;
@@ -237,6 +372,14 @@ export interface ElectronAPI {
   startImport: (options: ImportOptions) => Promise<IpcResponse<ImportResult>>;
   cancelImport: () => Promise<{ success: boolean }>;
   onImportProgress: (callback: (progress: ImportProgress) => void) => () => void;
+
+  // Schema Diff & Comparison
+  getDatabasesForConnection: (config: ConnectionConfig) => Promise<IpcResponse<string[]>>;
+  compareSchemas: (req: SchemaCompareRequest) => Promise<IpcResponse<SchemaDiffResult>>;
+  generateMigrationScript: (diff: SchemaDiffResult, options: MigrationScriptOptions) => Promise<IpcResponse<string>>;
+  applyMigrationScript: (req: { targetConfig: ConnectionConfig; targetDatabase: string; script: string }) => Promise<IpcResponse<MigrationExecutionResult>>;
+  onCompareProgress: (callback: (progress: CompareProgress) => void) => () => void;
+  onMigrationProgress: (callback: (progress: MigrationProgress) => void) => () => void;
 }
 
 declare global {

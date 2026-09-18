@@ -18,7 +18,8 @@ import {
   EyeOff,
   Terminal,
   FolderOpen,
-  Key
+  Key,
+  Copy
 } from 'lucide-react';
 
 interface ConnectionModalProps {
@@ -68,6 +69,23 @@ const COMMON_CHARSETS = [
   'tis620',
   'ujis'
 ];
+
+const getClonedName = (baseName: string, existingList: ConnectionConfig[], suffix: string): string => {
+  const cleanSuffix = suffix.trim() || 'Copia';
+  const escapedSuffix = cleanSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`\\s*\\(${escapedSuffix}(?:\\s+(\\d+))?\\)$`, 'i');
+  const cleanBase = (baseName || '').replace(regex, '').trim() || 'Conexión';
+
+  const candidate = `${cleanBase} (${cleanSuffix})`;
+  if (!existingList.some(c => c.name.toLowerCase() === candidate.toLowerCase())) {
+    return candidate;
+  }
+  let counter = 2;
+  while (existingList.some(c => c.name.toLowerCase() === `${cleanBase} (${cleanSuffix} ${counter})`.toLowerCase())) {
+    counter++;
+  }
+  return `${cleanBase} (${cleanSuffix} ${counter})`;
+};
 
 export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   isOpen,
@@ -151,6 +169,38 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
     setTestResult(null);
     setSshTestResult(null);
     setActiveTab('general');
+  };
+
+  const handleClone = async (connToClone: ConnectionConfig, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const cloneSuffix = t('connectionModal.cloneSuffix') || 'Copia';
+    const newName = getClonedName(connToClone.name, savedConnections, cloneSuffix);
+    const newId = 'conn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+
+    const clonedConn: ConnectionConfig = {
+      ...connToClone,
+      id: newId,
+      name: newName,
+      createdAt: new Date().toISOString(),
+      ssh: connToClone.ssh ? { ...connToClone.ssh } : { ...DEFAULT_SSH_CONFIG }
+    };
+
+    setIsSaving(true);
+    try {
+      if (window.electronAPI?.saveConnection) {
+        await window.electronAPI.saveConnection(clonedConn);
+        onRefreshConnections();
+      }
+      setSelectedConfig(clonedConn);
+      lastSelectedIdRef.current = newId;
+      setTestResult(null);
+      setSshTestResult(null);
+      setActiveTab('general');
+    } catch (err: any) {
+      alert(`Error al clonar la conexión: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleBrowseSshKey = async () => {
@@ -368,14 +418,24 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={(e) => handleDelete(conn.id, e)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded transition-all shrink-0 ml-1"
-                      title="Eliminar conexión"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className={`flex items-center gap-0.5 shrink-0 ml-1 transition-opacity ${isSelected ? 'opacity-90' : 'opacity-0 group-hover:opacity-100'}`}>
+                      <button
+                        type="button"
+                        onClick={(e) => handleClone(conn, e)}
+                        className="p-1 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded transition-all"
+                        title={t('connectionModal.cloneConnectionTooltip')}
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDelete(conn.id, e)}
+                        className="p-1 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded transition-all"
+                        title={t('connectionModal.deleteConfirm')}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -917,6 +977,17 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                 >
                   <Save className="w-3.5 h-3.5 text-emerald-400" />
                   <span>{isSaving ? 'Guardando...' : t('connectionModal.saveProfile')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleClone(selectedConfig)}
+                  disabled={isSaving || isConnecting}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 rounded-lg text-xs font-medium border border-zinc-700 transition-colors"
+                  title={t('connectionModal.cloneConnectionTooltip')}
+                >
+                  <Copy className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{t('connectionModal.cloneProfile')}</span>
                 </button>
               </div>
 
