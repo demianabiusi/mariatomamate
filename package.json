@@ -54,7 +54,11 @@
       "target": [
         "AppImage"
       ],
-      "category": "Development"
+      "category": "Development",
+      "icon": "public/icon.png",
+      "desktop": {
+        "StartupWMClass": "maria-toma-mate"
+      }
     }
   },
   "keywords": [

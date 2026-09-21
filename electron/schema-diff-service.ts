@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import { SshTunnelService, SshTunnelConfig, ActiveSshTunnel } from './ssh-tunnel-service';
 import { MariaDbService, MySqlConnectionOptions } from './mariadb-service';
+import { createMysqlOldPasswordPlugin } from './mysql-old-password';
 
 export interface ColumnMetadata {
   columnName: string;
@@ -238,6 +239,12 @@ export class SchemaDiffService {
       if (options.ssl) {
         connOptions.ssl = typeof options.ssl === 'object' ? options.ssl : { rejectUnauthorized: false };
       }
+
+      const oldPasswordPlugin = createMysqlOldPasswordPlugin();
+      (connOptions as any).authPlugins = {
+        mysql_old_password: oldPasswordPlugin,
+        '': oldPasswordPlugin
+      };
 
       conn = await mysql.createConnection(connOptions);
       return await callback(conn);

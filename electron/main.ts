@@ -67,11 +67,14 @@ function getAppIcon(): NativeImage | string | undefined {
 
   const possiblePaths = app.isPackaged
     ? [
+        path.join(app.getAppPath(), 'public', isWin ? 'icon.ico' : 'icon.png'),
+        path.join(app.getAppPath(), 'public/icon.png'),
         path.join(process.resourcesPath, '..', isWin ? 'icon.ico' : 'icon.png'),
         path.join(path.dirname(app.getPath('exe')), isWin ? 'icon.ico' : 'icon.png'),
         path.join(process.resourcesPath, isWin ? 'icon.ico' : 'icon.png'),
       ]
     : [
+        path.join(app.getAppPath(), 'public', isWin ? 'icon.ico' : 'icon.png'),
         path.join(__dirname, '../public', isWin ? 'icon.ico' : 'icon.png'),
         path.join(process.cwd(), 'public', isWin ? 'icon.ico' : 'icon.png'),
         path.join(__dirname, '../public/icon.png'),
@@ -240,7 +243,11 @@ ipcMain.handle('db:delete-connection', async (_, id: string) => {
 ipcMain.handle('db:test-connection', async (_, config) => {
   try {
     const res = await mariaService.testConnection(config);
-    return { success: res.success, data: { message: res.message, pingMs: res.pingMs, serverVersion: res.serverVersion } };
+    return {
+      success: res.success,
+      data: { message: res.message, pingMs: res.pingMs, serverVersion: res.serverVersion },
+      error: res.success ? undefined : res.message
+    };
   } catch (err: any) {
     return { success: false, error: err.message || 'Error en prueba de conexión' };
   }

@@ -274,7 +274,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
         } else {
           setTestResult({
             success: false,
-            message: res.error || 'Fallo de conexión'
+            message: res.error || (res.data as any)?.message || 'Fallo de conexión'
           });
         }
       }
