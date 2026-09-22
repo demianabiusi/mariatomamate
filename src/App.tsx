@@ -333,13 +333,16 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleUpdateActiveSql = (newSql: string) => {
-    const nextTabs = tabs.map(t => t.id === activeTabId ? { ...t, sql: newSql } : t);
-    setTabs(nextTabs);
-    if (activeConfig) {
-      saveWorkspaceDebounced(activeConfig.id, nextTabs, activeTabId, maxRows, activeDatabaseRef.current);
-    }
-  };
+  const handleUpdateActiveSql = useCallback((newSql: string) => {
+    setTabs(prev => {
+      const currentTabId = activeTabIdRef.current;
+      const nextTabs = prev.map(t => t.id === currentTabId ? { ...t, sql: newSql } : t);
+      if (activeConfigRef.current) {
+        saveWorkspaceDebounced(activeConfigRef.current.id, nextTabs, currentTabId, maxRowsRef.current, activeDatabaseRef.current);
+      }
+      return nextTabs;
+    });
+  }, [saveWorkspaceDebounced]);
 
   const handleUpdateActiveTabResultTab = (subTab: 'grid' | 'messages' | 'history') => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, activeResultTab: subTab } : t));
@@ -688,6 +691,7 @@ export const App: React.FC = () => {
           {/* Top Half: Monaco SQL Editor */}
           <div style={{ height: `${editorHeightPercent}%` }} className="shrink-0 overflow-hidden">
             <SqlEditor
+              tabId={activeTabId}
               sql={activeTab.sql}
               onChange={handleUpdateActiveSql}
               onExecute={handleExecute}

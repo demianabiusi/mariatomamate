@@ -107,6 +107,9 @@
     "clear": "Limpiar",
     "rowsLimit": "Límite de filas:",
     "placeholder": "-- Escribe tu consulta SQL aquí...",
+    "autocompleteOn": "Auto: ON",
+    "autocompleteOff": "Auto: OFF",
+    "autocompleteTooltip": "Alternar sugerencias automáticas de autocompletado (Ctrl+Espacio para sugerencias manuales)",
     "closeOtherTabs": "Cerrar Otras Pestañas",
     "closeTabsToRight": "Cerrar Pestañas a la Derecha",
     "closeAllTabs": "Cerrar Todas las Pestañas"

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import Editor, { OnMount, loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
 import { useTranslation } from '../../i18n/I18nContext';
@@ -14,10 +14,12 @@ import {
   FolderOpen, 
   Eraser, 
   Sparkles,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Zap
 } from 'lucide-react';
 
 interface SqlEditorProps {
+  tabId?: string;
   sql: string;
   onChange: (value: string) => void;
   onExecute: (customQuery?: string) => void;
@@ -30,6 +32,7 @@ interface SqlEditorProps {
 }
 
 export const SqlEditor: React.FC<SqlEditorProps> = ({
+  tabId,
   sql,
   onChange,
   onExecute,
@@ -45,6 +48,29 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const executeKey = swapF9F5 ? 'F5' : 'F9';
+
+  const activeTabId = tabId || 'default';
+  const lastTabIdRef = useRef<string>(activeTabId);
+  const viewStatesRef = useRef<Map<string, monaco.editor.ICodeEditorViewState>>(new Map());
+  const sentValuesRef = useRef<Set<string>>(new Set());
+
+  // Autocomplete toggle (persisted)
+  const [autocompleteEnabled, setAutocompleteEnabled] = useState<boolean>(() =>
+    localStorage.getItem('mariatomamate_autocomplete') !== 'false'
+  );
+
+  const handleToggleAutocomplete = () => {
+    setAutocompleteEnabled(prev => {
+      const next = !prev;
+      localStorage.setItem('mariatomamate_autocomplete', String(next));
+      if (editorRef.current) {
+        editorRef.current.updateOptions({
+          quickSuggestions: next ? { other: true, comments: false, strings: false } : false
+        });
+      }
+      return next;
+    });
+  };
 
   // Refs to prevent stale closures inside Monaco callbacks
   const onExecuteRef = useRef(onExecute);
@@ -73,9 +99,64 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
     };
   }, []);
 
+  // Handle external updates (tab switch, sidebar click, clear, open file, etc.)
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // 1. Check if active tab switched
+    if (lastTabIdRef.current !== activeTabId) {
+      if (lastTabIdRef.current) {
+        const state = editor.saveViewState();
+        if (state) {
+          viewStatesRef.current.set(lastTabIdRef.current, state);
+        }
+      }
+
+      lastTabIdRef.current = activeTabId;
+      sentValuesRef.current.clear();
+
+      editor.setValue(sql);
+
+      const savedState = viewStatesRef.current.get(activeTabId);
+      if (savedState) {
+        editor.restoreViewState(savedState);
+      }
+      return;
+    }
+
+    // 2. Tab did not change.
+    // Check if this incoming SQL update was produced by user typing in the editor:
+    if (sentValuesRef.current.has(sql)) {
+      sentValuesRef.current.delete(sql);
+      return;
+    }
+
+    // 3. External change within the same tab (e.g. click table in tree, open file, clear editor):
+    if (sql !== editor.getValue()) {
+      editor.setValue(sql);
+    }
+  }, [activeTabId, sql]);
+
+  const handleEditorChange = (val: string | undefined) => {
+    const nextVal = val ?? '';
+    sentValuesRef.current.add(nextVal);
+    // Keep set bounded
+    if (sentValuesRef.current.size > 60) {
+      const first = sentValuesRef.current.values().next().value;
+      if (first !== undefined) sentValuesRef.current.delete(first);
+    }
+    onChange(nextVal);
+  };
+
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    lastTabIdRef.current = activeTabId;
+
+    if (editor.getValue() !== sql) {
+      editor.setValue(sql);
+    }
 
     // Custom MySQL/MariaDB autocompletions with column & table intelligence
     if (completionDisposableRef.current) {
@@ -147,30 +228,74 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
 
         // General suggestions when not immediately following a dot
         const mysqlKeywords = [
-          'SELECT', 'FROM', 'WHERE', 'INSERT INTO', 'UPDATE', 'DELETE', 'JOIN', 'LEFT JOIN',
-          'RIGHT JOIN', 'INNER JOIN', 'CROSS JOIN', 'GROUP BY', 'ORDER BY', 'HAVING',
-          'LIMIT', 'OFFSET', 'UNION', 'UNION ALL', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE',
-          'CREATE DATABASE', 'USE', 'SHOW TABLES', 'SHOW DATABASES', 'DESCRIBE', 'EXPLAIN',
-          'TRUNCATE TABLE', 'CREATE VIEW', 'CREATE PROCEDURE', 'CREATE FUNCTION', 'CREATE TRIGGER',
-          'ENGINE=InnoDB', 'CHARACTER SET utf8mb4', 'COLLATE utf8mb4_unicode_ci',
-          'AUTO_INCREMENT', 'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'NOT NULL', 'DEFAULT',
-          'UNIQUE', 'INDEX', 'KEY', 'ON UPDATE CASCADE', 'ON DELETE CASCADE',
-          'INT', 'BIGINT', 'VARCHAR', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'DECIMAL', 'DATE',
-          'DATETIME', 'TIMESTAMP', 'TIME', 'BOOLEAN', 'TINYINT', 'DOUBLE', 'FLOAT', 'JSON',
-          'BLOB', 'LONGBLOB', 'ENUM', 'SET', 'START TRANSACTION', 'COMMIT', 'ROLLBACK',
-          'LOCK TABLES', 'UNLOCK TABLES', 'DELIMITER'
+          'SELECT', 'DISTINCT', 'DISTINCTROW', 'ALL', 'FROM', 'WHERE',
+          'GROUP BY', 'HAVING', 'ORDER BY', 'ASC', 'DESC',
+          'LIMIT', 'OFFSET',
+          'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'CROSS JOIN', 'FULL JOIN', 'NATURAL JOIN', 'STRAIGHT_JOIN',
+          'ON', 'USING',
+          'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
+          'AS', 'AND', 'OR', 'NOT', 'XOR', 'BETWEEN', 'NOT BETWEEN', 'IN', 'NOT IN', 'IS', 'IS NOT',
+          'LIKE', 'NOT LIKE', 'ILIKE', 'REGEXP', 'RLIKE', 'EXISTS', 'NOT EXISTS',
+          'IS NULL', 'IS NOT NULL', 'NULL', 'TRUE', 'FALSE',
+          'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+          'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'REPLACE INTO',
+          'CREATE TABLE', 'CREATE TABLE IF NOT EXISTS', 'ALTER TABLE', 'DROP TABLE', 'DROP TABLE IF EXISTS', 'TRUNCATE TABLE',
+          'CREATE DATABASE', 'CREATE DATABASE IF NOT EXISTS', 'DROP DATABASE', 'DROP DATABASE IF EXISTS', 'USE',
+          'CREATE VIEW', 'CREATE OR REPLACE VIEW', 'ALTER VIEW', 'DROP VIEW',
+          'CREATE PROCEDURE', 'DROP PROCEDURE', 'CREATE FUNCTION', 'DROP FUNCTION', 'CREATE TRIGGER', 'DROP TRIGGER',
+          'CREATE INDEX', 'DROP INDEX',
+          'SHOW TABLES', 'SHOW DATABASES', 'SHOW CREATE TABLE', 'SHOW PROCESSLIST', 'SHOW STATUS', 'SHOW VARIABLES', 'SHOW COLUMNS FROM',
+          'DESCRIBE', 'DESC', 'EXPLAIN', 'CALL',
+          'START TRANSACTION', 'COMMIT', 'ROLLBACK', 'SAVEPOINT', 'LOCK TABLES', 'UNLOCK TABLES', 'DELIMITER',
+          'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'AUTO_INCREMENT', 'DEFAULT', 'NOT NULL', 'UNIQUE', 'INDEX', 'KEY', 'CONSTRAINT', 'CHECK',
+          'ON UPDATE CASCADE', 'ON DELETE CASCADE', 'ON UPDATE SET NULL', 'ON DELETE SET NULL',
+          'ADD COLUMN', 'DROP COLUMN', 'MODIFY COLUMN', 'CHANGE COLUMN', 'RENAME TABLE', 'RENAME TO',
+          'ENGINE=InnoDB', 'ENGINE=MyISAM', 'CHARACTER SET utf8mb4', 'COLLATE utf8mb4_unicode_ci',
+          'INT', 'TINYINT', 'SMALLINT', 'MEDIUMINT', 'BIGINT',
+          'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE',
+          'VARCHAR', 'CHAR', 'TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT',
+          'DATE', 'DATETIME', 'TIMESTAMP', 'TIME', 'YEAR',
+          'BOOLEAN', 'BOOL', 'JSON', 'BLOB', 'TINYBLOB', 'MEDIUMBLOB', 'LONGBLOB',
+          'ENUM', 'SET', 'BINARY', 'VARBINARY'
         ];
 
         const mysqlFunctions = [
-          'NOW()', 'CURDATE()', 'CURTIME()', 'DATE_FORMAT(date, format)', 'DATEDIFF(expr1, expr2)',
-          'DATE_ADD(date, INTERVAL expr unit)', 'DATE_SUB(date, INTERVAL expr unit)',
-          'CONCAT(str1, str2, ...)', 'CONCAT_WS(separator, str1, str2, ...)', 'GROUP_CONCAT(expr)',
-          'COALESCE(val1, val2, ...)', 'IFNULL(expr1, expr2)', 'NULLIF(expr1, expr2)',
-          'COUNT(*)', 'SUM(expr)', 'AVG(expr)', 'MIN(expr)', 'MAX(expr)',
-          'ROUND(number, decimals)', 'CEIL(number)', 'FLOOR(number)', 'ABS(number)',
-          'UPPER(str)', 'LOWER(str)', 'TRIM(str)', 'SUBSTRING(str, pos, len)',
-          'JSON_EXTRACT(json_doc, path)', 'JSON_UNQUOTE(json_val)', 'LAST_INSERT_ID()',
-          'DATABASE()', 'USER()', 'VERSION()'
+          { name: 'NOW', insertText: 'NOW()', detail: 'Fecha y hora actual' },
+          { name: 'CURDATE', insertText: 'CURDATE()', detail: 'Fecha actual' },
+          { name: 'CURTIME', insertText: 'CURTIME()', detail: 'Hora actual' },
+          { name: 'DATE_FORMAT', insertText: 'DATE_FORMAT(${1:date}, \'${2:%Y-%m-%d}\')', detail: 'Formatear fecha' },
+          { name: 'DATEDIFF', insertText: 'DATEDIFF(${1:expr1}, ${2:expr2})', detail: 'Diferencia en días' },
+          { name: 'DATE_ADD', insertText: 'DATE_ADD(${1:date}, INTERVAL ${2:1} ${3:DAY})', detail: 'Sumar intervalo a fecha' },
+          { name: 'DATE_SUB', insertText: 'DATE_SUB(${1:date}, INTERVAL ${2:1} ${3:DAY})', detail: 'Restar intervalo a fecha' },
+          { name: 'CONCAT', insertText: 'CONCAT(${1:str1}, ${2:str2})', detail: 'Concatenar cadenas' },
+          { name: 'CONCAT_WS', insertText: 'CONCAT_WS(\'${1:, }\', ${2:str1}, ${3:str2})', detail: 'Concatenar con separador' },
+          { name: 'GROUP_CONCAT', insertText: 'GROUP_CONCAT(${1:expr})', detail: 'Concatenar valores de grupo' },
+          { name: 'COALESCE', insertText: 'COALESCE(${1:val1}, ${2:val2})', detail: 'Primer valor no nulo' },
+          { name: 'IFNULL', insertText: 'IFNULL(${1:expr1}, ${2:expr2})', detail: 'Si es nulo retornar valor' },
+          { name: 'NULLIF', insertText: 'NULLIF(${1:expr1}, ${2:expr2})', detail: 'Retorna NULL si coinciden' },
+          { name: 'IF', insertText: 'IF(${1:condition}, ${2:true_val}, ${3:false_val})', detail: 'Condición IF' },
+          { name: 'COUNT', insertText: 'COUNT(${1:*})', detail: 'Contar registros' },
+          { name: 'SUM', insertText: 'SUM(${1:expr})', detail: 'Suma de valores' },
+          { name: 'AVG', insertText: 'AVG(${1:expr})', detail: 'Promedio de valores' },
+          { name: 'MIN', insertText: 'MIN(${1:expr})', detail: 'Valor mínimo' },
+          { name: 'MAX', insertText: 'MAX(${1:expr})', detail: 'Valor máximo' },
+          { name: 'ROUND', insertText: 'ROUND(${1:number}, ${2:2})', detail: 'Redondear número' },
+          { name: 'CEIL', insertText: 'CEIL(${1:number})', detail: 'Redondear hacia arriba' },
+          { name: 'FLOOR', insertText: 'FLOOR(${1:number})', detail: 'Redondear hacia abajo' },
+          { name: 'ABS', insertText: 'ABS(${1:number})', detail: 'Valor absoluto' },
+          { name: 'UPPER', insertText: 'UPPER(${1:str})', detail: 'Mayúsculas' },
+          { name: 'LOWER', insertText: 'LOWER(${1:str})', detail: 'Minúsculas' },
+          { name: 'TRIM', insertText: 'TRIM(${1:str})', detail: 'Eliminar espacios' },
+          { name: 'SUBSTRING', insertText: 'SUBSTRING(${1:str}, ${2:pos}, ${3:len})', detail: 'Subcadena' },
+          { name: 'REPLACE', insertText: 'REPLACE(${1:str}, \'${2:from}\', \'${3:to}\')', detail: 'Reemplazar en cadena' },
+          { name: 'LENGTH', insertText: 'LENGTH(${1:str})', detail: 'Longitud en bytes' },
+          { name: 'CHAR_LENGTH', insertText: 'CHAR_LENGTH(${1:str})', detail: 'Longitud en caracteres' },
+          { name: 'JSON_EXTRACT', insertText: 'JSON_EXTRACT(${1:json_doc}, \'${2:$.path}\')', detail: 'Extraer JSON' },
+          { name: 'JSON_UNQUOTE', insertText: 'JSON_UNQUOTE(${1:json_val})', detail: 'Descomillar JSON' },
+          { name: 'LAST_INSERT_ID', insertText: 'LAST_INSERT_ID()', detail: 'Último ID insertado' },
+          { name: 'DATABASE', insertText: 'DATABASE()', detail: 'Base de datos actual' },
+          { name: 'USER', insertText: 'USER()', detail: 'Usuario actual' },
+          { name: 'VERSION', insertText: 'VERSION()', detail: 'Versión del servidor' }
         ];
 
         const suggestions: any[] = [];
@@ -188,12 +313,12 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
 
         // Add Functions
         mysqlFunctions.forEach((fn) => {
-          const fnName = fn.split('(')[0];
           suggestions.push({
-            label: fnName,
+            label: fn.name,
             kind: monaco.languages.CompletionItemKind.Function,
-            insertText: fn,
-            detail: `Función MySQL: ${fn}`,
+            insertText: fn.insertText,
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            detail: `Función MySQL: ${fn.detail}`,
             range
           });
         });
@@ -258,7 +383,8 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       const selection = editor.getSelection();
       const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
-      onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : undefined);
+      const fullText = editor.getValue();
+      onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : (fullText && fullText.trim() ? fullText.trim() : undefined));
     });
 
     // F9 key handling
@@ -269,7 +395,8 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
       }
       const selection = editor.getSelection();
       const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
-      onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : undefined);
+      const fullText = editor.getValue();
+      onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : (fullText && fullText.trim() ? fullText.trim() : undefined));
     });
 
     // F5 key handling
@@ -277,14 +404,16 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
       if (swapF9F5Ref.current) {
         const selection = editor.getSelection();
         const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
-        onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : undefined);
+        const fullText = editor.getValue();
+        onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : (fullText && fullText.trim() ? fullText.trim() : undefined));
       }
     });
   };
 
   const handleSaveFile = async () => {
     if (window.electronAPI?.saveSqlFile) {
-      await window.electronAPI.saveSqlFile(sql);
+      const content = editorRef.current ? editorRef.current.getValue() : sql;
+      await window.electronAPI.saveSqlFile(content);
     }
   };
 
@@ -292,6 +421,11 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
     if (window.electronAPI?.openSqlFile) {
       const res = await window.electronAPI.openSqlFile();
       if (res && res.content) {
+        if (editorRef.current) {
+          editorRef.current.setValue(res.content);
+          editorRef.current.focus();
+        }
+        sentValuesRef.current.clear();
         onChange(res.content);
       }
     }
@@ -303,6 +437,15 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
     }
   };
 
+  const handleClear = () => {
+    if (editorRef.current) {
+      editorRef.current.setValue('');
+      editorRef.current.focus();
+    }
+    sentValuesRef.current.clear();
+    onChange('');
+  };
+
   return (
     <div className="flex flex-col h-full bg-zinc-950 overflow-hidden">
       
@@ -312,7 +455,10 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
         {/* Left Actions: Run, Run Selected */}
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => onExecute()}
+            onClick={() => {
+              const fullText = editorRef.current ? editorRef.current.getValue() : undefined;
+              onExecute(fullText);
+            }}
             disabled={isRunning}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg shadow-sm transition-all ${
               isRunning
@@ -354,6 +500,20 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
           >
             <ArrowLeftRight className="w-3 h-3" />
             <span className="font-mono font-semibold">{swapF9F5 ? 'F5=Ejecutar' : 'F9=Ejecutar'}</span>
+          </button>
+
+          {/* Autocomplete Toggle Button */}
+          <button
+            onClick={handleToggleAutocomplete}
+            className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded border transition-colors ${
+              autocompleteEnabled
+                ? 'bg-zinc-800/80 border-zinc-700 text-emerald-400 hover:text-emerald-300'
+                : 'bg-zinc-900/80 border-zinc-800 text-zinc-500 hover:text-zinc-400'
+            }`}
+            title={t('editor.autocompleteTooltip')}
+          >
+            <Zap className={`w-3 h-3 ${autocompleteEnabled ? 'text-emerald-400 fill-emerald-400/20' : 'text-zinc-500'}`} />
+            <span className="font-mono text-[10px]">{autocompleteEnabled ? t('editor.autocompleteOn') : t('editor.autocompleteOff')}</span>
           </button>
         </div>
 
@@ -408,7 +568,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
 
           {/* Clear Editor */}
           <button
-            onClick={() => onChange('')}
+            onClick={handleClear}
             className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
             title={t('editor.clear')}
           >
@@ -424,8 +584,8 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
           height="100%"
           defaultLanguage="sql"
           theme={theme === 'light' ? 'vs' : 'vs-dark'}
-          value={sql}
-          onChange={(val) => onChange(val || '')}
+          defaultValue={sql}
+          onChange={handleEditorChange}
           onMount={handleEditorDidMount}
           loading={
             <div className="flex items-center justify-center h-full bg-zinc-950 text-zinc-400 text-xs gap-2">
@@ -444,11 +604,26 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
             scrollBeyondLastLine: false,
             wordWrap: 'on',
             automaticLayout: true,
-            suggestOnTriggerCharacters: true,
-            quickSuggestions: { other: true, comments: false, strings: false },
             tabSize: 2,
             renderWhitespace: 'selection',
-            padding: { top: 8, bottom: 8 }
+            padding: { top: 8, bottom: 8 },
+            // Autocomplete behavior settings:
+            quickSuggestions: autocompleteEnabled ? { other: true, comments: false, strings: false } : false,
+            quickSuggestionsDelay: 60,
+            suggestOnTriggerCharacters: true,
+            acceptSuggestionOnCommitCharacter: false, // Prevents punctuation/space from committing suggestions
+            acceptSuggestionOnEnter: 'smart',         // Enter doesn't hijack line breaks
+            tabCompletion: 'on',                     // Tab cleanly accepts completion
+            suggest: {
+              insertMode: 'replace',
+              filterGraceful: true,
+              snippetsPreventQuickSuggestions: false,
+              localityBonus: true,
+              shareSuggestSelections: true,
+              showWords: false
+            },
+            wordBasedSuggestions: 'off',
+            suggestSelection: 'first'
           }}
         />
       </div>

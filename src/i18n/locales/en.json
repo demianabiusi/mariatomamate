@@ -107,6 +107,9 @@
     "clear": "Clear",
     "rowsLimit": "Row limit:",
     "placeholder": "-- Write your SQL query here...",
+    "autocompleteOn": "Auto: ON",
+    "autocompleteOff": "Auto: OFF",
+    "autocompleteTooltip": "Toggle automatic autocomplete suggestions (Ctrl+Space for manual suggestions)",
     "closeOtherTabs": "Close Other Tabs",
     "closeTabsToRight": "Close Tabs to the Right",
     "closeAllTabs": "Close All Tabs"
