@@ -163,7 +163,8 @@ function createWindow() {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    const devPort = process.env.PORT || '5174';
+    mainWindow.loadURL(`http://localhost:${devPort}`);
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }

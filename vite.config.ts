@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: './',
   server: {
-    port: 5173,
+    port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5174,
     strictPort: true,
   },
   build: {
