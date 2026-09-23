@@ -410,6 +410,107 @@ export interface ElectronAPI {
   applyMigrationScript: (req: { targetConfig: ConnectionConfig; targetDatabase: string; script: string }) => Promise<IpcResponse<MigrationExecutionResult>>;
   onCompareProgress: (callback: (progress: CompareProgress) => void) => () => void;
   onMigrationProgress: (callback: (progress: MigrationProgress) => void) => () => void;
+
+  // User & Privilege Management
+  getUserServerInfo: () => Promise<IpcResponse<UserServerInfo>>;
+  listUsers: () => Promise<IpcResponse<DbUserItem[]>>;
+  getUserDetails: (user: string, host: string) => Promise<IpcResponse<DbUserDetails>>;
+  generateUserSql: (plan: UserSavePlan) => Promise<IpcResponse<string[]>>;
+  executeUserPlan: (statements: string[]) => Promise<IpcResponse<UserPlanExecutionResult>>;
+  dropUser: (user: string, host: string, isRole?: boolean) => Promise<IpcResponse<boolean>>;
+  revokeDatabasePrivileges: (user: string, host: string, database: string) => Promise<IpcResponse<boolean>>;
+  revokeAllGlobalPrivileges: (user: string, host: string) => Promise<IpcResponse<boolean>>;
+}
+
+export type ServerFlavor = 'mariadb' | 'mysql';
+
+export interface UserServerInfo {
+  flavor: ServerFlavor;
+  version: string;
+  fullVersion: string;
+  major: number;
+  minor: number;
+  patch: number;
+  supportsRoles: boolean;
+  supportsAccountLocking: boolean;
+  supportsPasswordExpire: boolean;
+  supportsPasswordHistory: boolean;
+  supportsFailedLoginAttempts: boolean;
+  supportsGlobalGrants: boolean;
+  isMariaDb104Plus: boolean;
+  availablePlugins: string[];
+  defaultAuthPlugin: string;
+}
+
+export interface DbUserItem {
+  user: string;
+  host: string;
+  isRole: boolean;
+  plugin: string;
+  hasPassword: boolean;
+  accountLocked: boolean;
+  passwordExpired: boolean;
+  isCurrentUser: boolean;
+}
+
+export interface DatabasePrivilege {
+  database: string;
+  privileges: string[];
+  grantOption: boolean;
+}
+
+export interface DbUserDetails {
+  user: string;
+  host: string;
+  isRole: boolean;
+  plugin: string;
+  accountLocked: boolean;
+  passwordExpired: boolean;
+  passwordExpirePolicy?: 'DEFAULT' | 'NEVER' | 'INTERVAL';
+  passwordExpireDays?: number;
+  maxQueriesPerHour: number;
+  maxUpdatesPerHour: number;
+  maxConnectionsPerHour: number;
+  maxUserConnections: number;
+  sslType: 'NONE' | 'ANY' | 'X509' | 'SPECIFIED';
+  globalPrivileges: string[];
+  globalGrantOption: boolean;
+  databasePrivileges: DatabasePrivilege[];
+  assignedRoles: string[];
+  defaultRole?: string;
+  rawGrants: string[];
+}
+
+export interface UserSavePlan {
+  isNew: boolean;
+  user: string;
+  host: string;
+  originalUser?: string;
+  originalHost?: string;
+  isRole?: boolean;
+  password?: string;
+  authPlugin?: string;
+  accountLocked?: boolean;
+  passwordExpirePolicy?: 'DEFAULT' | 'NEVER' | 'IMMEDIATE' | 'INTERVAL';
+  passwordExpireDays?: number;
+  maxQueriesPerHour?: number;
+  maxUpdatesPerHour?: number;
+  maxConnectionsPerHour?: number;
+  maxUserConnections?: number;
+  sslType?: 'NONE' | 'ANY' | 'X509';
+  globalPrivileges: string[];
+  globalGrantOption: boolean;
+  databasePrivileges: DatabasePrivilege[];
+  assignedRoles?: string[];
+  defaultRole?: string;
+}
+
+export interface UserPlanExecutionResult {
+  success: boolean;
+  statementsExecuted: number;
+  statements: string[];
+  errors: { statement: string; error: string }[];
+  durationMs: number;
 }
 
 declare global {
@@ -417,3 +518,4 @@ declare global {
     electronAPI: ElectronAPI;
   }
 }
+

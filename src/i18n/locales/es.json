@@ -39,6 +39,8 @@
     "createDbTooltip": "Crear una nueva base de datos en MariaDB / MySQL",
     "compareSchemas": "Comparar BD",
     "compareSchemasTooltip": "Comparar metadatos entre bases de datos y generar script de sincronización",
+    "userManager": "Usuarios",
+    "userManagerTooltip": "Administrador gráfico de usuarios, claves y permisos",
     "connect": "Conectar a MariaDB / MySQL",
     "changeConnection": "Cambiar Conexión",
     "disconnect": "Desconectar",
@@ -47,6 +49,20 @@
     "theme": "Estilo",
     "themeTooltip": "Cambiar estilo visual (Claro / Oscuro)",
     "activeDatabase": "Base activa:"
+  },
+  "users": {
+    "title": "Administrador de Usuarios y Permisos",
+    "subtitle": "Crea y administra usuarios, contraseñas, roles y privilegios adaptados a tu versión de base de datos.",
+    "newUser": "Nuevo Usuario",
+    "newRole": "Nuevo Rol",
+    "duplicateUser": "Duplicar / Clonar",
+    "dropUser": "Eliminar Usuario",
+    "accountAndKey": "Cuenta y Clave",
+    "globalPrivileges": "Permisos Globales",
+    "dbPrivileges": "Permisos por BD",
+    "roles": "Roles",
+    "viewSql": "Ver SQL",
+    "saveChanges": "Guardar y Aplicar Cambios"
   },
   "theme": {
     "title": "Estilo visual",

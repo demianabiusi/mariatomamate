@@ -16,7 +16,8 @@ import {
   FolderPlus,
   Sun,
   Moon,
-  GitCompare
+  GitCompare,
+  Users
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -28,6 +29,7 @@ interface NavbarProps {
   onOpenDumpModal?: () => void;
   onOpenImportModal?: () => void;
   onOpenSchemaDiffModal?: () => void;
+  onOpenUserManagerModal?: () => void;
   onDisconnect: () => void;
   onNewQuery: () => void;
 }
@@ -41,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenDumpModal,
   onOpenImportModal,
   onOpenSchemaDiffModal,
+  onOpenUserManagerModal,
   onDisconnect,
   onNewQuery
 }) => {
@@ -130,6 +133,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <GitCompare className="w-3.5 h-3.5 text-indigo-400" />
             <span>{t('navbar.compareSchemas')}</span>
+          </button>
+        )}
+
+        {/* User & Privilege Manager Action */}
+        {isConnected && onOpenUserManagerModal && (
+          <button
+            onClick={onOpenUserManagerModal}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-sky-300 hover:text-sky-200 text-xs rounded border border-zinc-800 hover:border-sky-500/30 transition-colors"
+            title={t('navbar.userManagerTooltip')}
+          >
+            <Users className="w-3.5 h-3.5 text-sky-400" />
+            <span>{t('navbar.userManager')}</span>
           </button>
         )}
       </div>

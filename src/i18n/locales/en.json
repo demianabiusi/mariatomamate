@@ -39,6 +39,8 @@
     "createDbTooltip": "Create new database in MariaDB / MySQL",
     "compareSchemas": "Compare DB",
     "compareSchemasTooltip": "Compare metadata between databases and generate synchronization script",
+    "userManager": "Users",
+    "userManagerTooltip": "Visual manager for users, passwords, and permissions",
     "connect": "Connect to MariaDB / MySQL",
     "changeConnection": "Change Connection",
     "disconnect": "Disconnect",
@@ -47,6 +49,20 @@
     "theme": "Theme",
     "themeTooltip": "Change visual theme (Light / Dark)",
     "activeDatabase": "Active DB:"
+  },
+  "users": {
+    "title": "User & Privilege Manager",
+    "subtitle": "Create and manage users, passwords, roles, and privileges tailored to your database version.",
+    "newUser": "New User",
+    "newRole": "New Role",
+    "duplicateUser": "Duplicate / Clone",
+    "dropUser": "Drop User",
+    "accountAndKey": "Account & Password",
+    "globalPrivileges": "Global Privileges",
+    "dbPrivileges": "Database Privileges",
+    "roles": "Roles",
+    "viewSql": "View SQL",
+    "saveChanges": "Save & Apply Changes"
   },
   "theme": {
     "title": "Visual Theme",

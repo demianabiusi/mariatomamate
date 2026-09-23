@@ -5,6 +5,7 @@ import { MariaDbService } from './mariadb-service';
 import { StorageService } from './storage-service';
 import { DumpService, DumpOptions, DumpProgress } from './dump-service';
 import { SchemaDiffService, SchemaCompareRequest, MigrationScriptOptions } from './schema-diff-service';
+import { UserService, UserSavePlan } from './user-service';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
@@ -13,6 +14,7 @@ const mariaService = new MariaDbService();
 const storageService = new StorageService();
 const dumpService = new DumpService(mariaService);
 const schemaDiffService = new SchemaDiffService(mariaService);
+const userService = new UserService(mariaService);
 
 interface WindowState {
   x?: number;
@@ -582,5 +584,87 @@ ipcMain.handle('diff:apply-migration', async (_, { targetConfig, targetDatabase,
     };
   } catch (err: any) {
     return { success: false, error: err.message || 'Error al aplicar script sobre la base de datos destino' };
+  }
+});
+
+// IPC: User & Privilege Management (MySQL & MariaDB version-aware)
+ipcMain.handle('user:get-server-info', async () => {
+  try {
+    const data = await userService.getServerInfo();
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error in user:get-server-info:', err);
+    return { success: false, error: err.message || 'Error al detectar información de versión del servidor' };
+  }
+});
+
+ipcMain.handle('user:list', async () => {
+  try {
+    const data = await userService.listUsers();
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error in user:list:', err);
+    return { success: false, error: err.message || 'Error al listar usuarios de la base de datos' };
+  }
+});
+
+ipcMain.handle('user:get-details', async (_, { user, host }: { user: string; host: string }) => {
+  try {
+    const data = await userService.getUserDetails(user, host);
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error in user:get-details:', err);
+    return { success: false, error: err.message || `Error al obtener detalles del usuario ${user}@${host}` };
+  }
+});
+
+ipcMain.handle('user:generate-sql', async (_, plan: UserSavePlan) => {
+  try {
+    const serverInfo = await userService.getServerInfo();
+    const statements = userService.generateStatements(plan, serverInfo);
+    return { success: true, data: statements };
+  } catch (err: any) {
+    console.error('Error in user:generate-sql:', err);
+    return { success: false, error: err.message || 'Error al generar sentencias SQL' };
+  }
+});
+
+ipcMain.handle('user:execute-plan', async (_, statements: string[]) => {
+  try {
+    const res = await userService.executePlan(statements);
+    return { success: res.success, data: res, error: res.success ? undefined : `${res.errors.length} errores encontrados al ejecutar las sentencias.` };
+  } catch (err: any) {
+    console.error('Error in user:execute-plan:', err);
+    return { success: false, error: err.message || 'Error al aplicar cambios de usuario y permisos' };
+  }
+});
+
+ipcMain.handle('user:drop', async (_, { user, host, isRole }: { user: string; host: string; isRole?: boolean }) => {
+  try {
+    await userService.dropUser(user, host, isRole);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error in user:drop:', err);
+    return { success: false, error: err.message || `Error al eliminar el usuario ${user}@${host}` };
+  }
+});
+
+ipcMain.handle('user:revoke-database', async (_, { user, host, database }: { user: string; host: string; database: string }) => {
+  try {
+    await userService.revokeDatabasePrivileges(user, host, database);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error in user:revoke-database:', err);
+    return { success: false, error: err.message || `Error al revocar privilegios en la base ${database}` };
+  }
+});
+
+ipcMain.handle('user:revoke-global', async (_, { user, host }: { user: string; host: string }) => {
+  try {
+    await userService.revokeAllGlobalPrivileges(user, host);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error in user:revoke-global:', err);
+    return { success: false, error: err.message || `Error al revocar privilegios globales` };
   }
 });

@@ -73,5 +73,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_: any, data: any) => callback(data);
     ipcRenderer.on('diff:migration-progress', handler);
     return () => ipcRenderer.removeListener('diff:migration-progress', handler);
-  }
+  },
+
+  // User & Privilege Management
+  getUserServerInfo: () => ipcRenderer.invoke('user:get-server-info'),
+  listUsers: () => ipcRenderer.invoke('user:list'),
+  getUserDetails: (user: string, host: string) => ipcRenderer.invoke('user:get-details', { user, host }),
+  generateUserSql: (plan: any) => ipcRenderer.invoke('user:generate-sql', plan),
+  executeUserPlan: (statements: string[]) => ipcRenderer.invoke('user:execute-plan', statements),
+  dropUser: (user: string, host: string, isRole?: boolean) => ipcRenderer.invoke('user:drop', { user, host, isRole }),
+  revokeDatabasePrivileges: (user: string, host: string, database: string) => 
+    ipcRenderer.invoke('user:revoke-database', { user, host, database }),
+  revokeAllGlobalPrivileges: (user: string, host: string) => 
+    ipcRenderer.invoke('user:revoke-global', { user, host })
 });

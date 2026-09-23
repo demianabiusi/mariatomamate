@@ -82,6 +82,36 @@ Fue construido utilizando el cliente Firebird (FirebirdYog) como referencia arqu
 - Auto-reconexión opcional al iniciar la app.
 - Selector de idioma en tiempo real (Español 🧉 / Inglés 🇺🇸).
 
+### H. Administrador Gráfico de Usuarios, Permisos y Claves (Adaptado a Versiones)
+- **Detección Automática de Motor y Versión:**
+  - Identificación precisa entre **MySQL** (5.5, 5.6, 5.7, 8.0, 8.4 LTS, 9.0+) y **MariaDB** (5.5, 10.0 a 10.3, 10.4+, 11.x).
+  - Detección de matriz de capacidades: Roles, Bloqueo de cuenta (`ACCOUNT LOCK`), Expiración de contraseña (`PASSWORD EXPIRE`), Privilegios dinámicos (`mysql.global_grants`), plugins de autenticación disponibles (`caching_sha2_password`, `mysql_native_password`, `ed25519`, `unix_socket`), y estructura de tablas (`mysql.user` vs vista sobre `mysql.global_priv` en MariaDB 10.4+).
+- **Gestión de Cuentas y Claves:**
+  - Creación, modificación y renombrado de usuarios (`'usuario'@'host'`) con atajos (`%`, `localhost`).
+  - Asignación de contraseñas con sintaxis adaptada:
+    - MySQL 8+: `ALTER USER 'u'@'h' IDENTIFIED WITH plugin BY 'pass';`
+    - MySQL 5.7: `ALTER USER 'u'@'h' IDENTIFIED WITH plugin BY 'pass';`
+    - MariaDB: `ALTER USER` o `SET PASSWORD FOR 'u'@'h' = PASSWORD('pass');`
+    - MySQL 5.5/5.6: `SET PASSWORD FOR 'u'@'h' = PASSWORD('pass');`
+  - Generador de contraseñas aleatorias seguras de longitud configurable con un clic.
+  - Bloqueo y desbloqueo de cuentas (`ACCOUNT LOCK / UNLOCK`).
+  - Políticas de expiración de contraseña (`NEVER`, `IMMEDIATE`, `INTERVAL N DAYS`).
+  - Límites de recursos por hora (`MAX_QUERIES_PER_HOUR`, `MAX_UPDATES_PER_HOUR`, `MAX_CONNECTIONS_PER_HOUR`, `MAX_USER_CONNECTIONS`).
+  - Opciones de cifrado TLS/SSL (`REQUIRE SSL`, `REQUIRE X509`, `REQUIRE NONE`).
+- **Gestión Visual de Privilegios:**
+  - **Plantillas rápidas con 1 clic:** DBA / Administrador (`ALL PRIVILEGES` + `WITH GRANT OPTION`), Lectura y Escritura, Solo Lectura, Aplicación / Backend, y Limpiar Todo.
+  - Grilla organizada por categorías: Datos (DML: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `FILE`), Estructura (DDL: `CREATE`, `ALTER`, `INDEX`, `DROP`, `ROUTINE`, `VIEW`, `TRIGGER`, etc.), Administración (`SUPER`, `RELOAD`, `SHUTDOWN`, `PROCESS`, etc.).
+  - Privilegios dinámicos de MySQL 8 (`SYSTEM_VARIABLES_ADMIN`, `ROLE_ADMIN`, `BACKUP_ADMIN`, etc.) y específicos de MariaDB 10+.
+- **Permisos Específicos por Base de Datos:**
+  - Asignación granular de permisos a bases de datos individuales (`\`basedatos\`.*`).
+  - Agregar o retirar bases de datos con presets dedicados y soporte para `WITH GRANT OPTION` por esquema.
+- **Gestión de Roles (MySQL 8 / MariaDB 10+):**
+  - Creación de roles, asignación y revocación a usuarios, y rol por defecto.
+- **Herramientas de Productividad DBA:**
+  - **Duplicar / Clonar Usuario:** Clona todos los privilegios globales y por esquema de un usuario existente para crear uno nuevo (e.g. clonar de `localhost` a `%`) en un solo paso.
+  - **Vista Previa SQL en Tiempo Real:** Visualizador con Monaco Editor que muestra el script exacto antes de aplicarlo.
+  - Botón para abrir el script en una pestaña del editor SQL para ejecución o auditoría personalizada.
+
 ---
 
 ## 3. 📦 Comprobación de Compilación
