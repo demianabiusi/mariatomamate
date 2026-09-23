@@ -17,7 +17,9 @@ import {
   Sun,
   Moon,
   GitCompare,
-  Users
+  Users,
+  Activity,
+  Wrench
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -30,6 +32,7 @@ interface NavbarProps {
   onOpenImportModal?: () => void;
   onOpenSchemaDiffModal?: () => void;
   onOpenUserManagerModal?: () => void;
+  onOpenProcessViewerModal?: () => void;
   onDisconnect: () => void;
   onNewQuery: () => void;
 }
@@ -44,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenImportModal,
   onOpenSchemaDiffModal,
   onOpenUserManagerModal,
+  onOpenProcessViewerModal,
   onDisconnect,
   onNewQuery
 }) => {
@@ -51,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const { theme, setTheme, availableThemes } = useTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
 
   const currentLang = availableLanguages.find(l => l.code === language) || availableLanguages[0];
 
@@ -88,65 +93,199 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span>{t('navbar.newQuery')}</span>
         </button>
 
-        {/* Create DB Action */}
-        {isConnected && (
+        {/* Tools Dropdown Menu */}
+        <div className="relative">
           <button
-            onClick={onOpenCreateDbModal}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 text-xs rounded border border-zinc-800 transition-colors"
-            title={t('navbar.createDbTooltip')}
+            type="button"
+            onClick={() => setIsToolsMenuOpen(!isToolsMenuOpen)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs rounded border transition-colors ${
+              isToolsMenuOpen ? 'border-emerald-500/50 text-emerald-300 bg-zinc-800' : 'border-zinc-800'
+            }`}
+            title={t('navbar.toolsTooltip')}
           >
-            <FolderPlus className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{t('navbar.createDb')}</span>
+            <Wrench className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{t('navbar.tools')}</span>
+            <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform duration-150 ${isToolsMenuOpen ? 'rotate-180 text-emerald-400' : ''}`} />
           </button>
-        )}
 
-        {/* Dump / Export DB Action */}
-        {isConnected && onOpenDumpModal && (
-          <button
-            onClick={onOpenDumpModal}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-300 hover:text-emerald-200 text-xs rounded border border-zinc-800 hover:border-emerald-500/30 transition-colors"
-            title={t('navbar.exportDumpTooltip')}
-          >
-            <Download className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{t('navbar.exportDump')}</span>
-          </button>
-        )}
+          {isToolsMenuOpen && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setIsToolsMenuOpen(false)} 
+              />
+              <div className="absolute left-0 mt-1.5 z-50 w-72 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700/80 rounded-xl shadow-2xl py-2 animate-in fade-in zoom-in-95 duration-100">
+                {/* Section: Server & Monitoring */}
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  {t('navbar.toolsSectionServer')}
+                </div>
+                <div className="px-1 space-y-0.5">
+                  {onOpenUserManagerModal && (
+                    <button
+                      type="button"
+                      disabled={!isConnected}
+                      onClick={() => {
+                        setIsToolsMenuOpen(false);
+                        onOpenUserManagerModal();
+                      }}
+                      className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 disabled:opacity-40 disabled:pointer-events-none group"
+                    >
+                      <div className="mt-0.5 p-1 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 group-hover:bg-sky-500/20">
+                        <Users className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 flex items-center justify-between">
+                          <span>{t('navbar.userManager')}</span>
+                          {!isConnected && <span className="text-[10px] text-zinc-500">({t('common.disconnected')})</span>}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                          {t('navbar.userManagerDesc')}
+                        </div>
+                      </div>
+                    </button>
+                  )}
 
-        {/* Import Dump Action */}
-        {isConnected && onOpenImportModal && (
-          <button
-            onClick={onOpenImportModal}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-teal-300 hover:text-teal-200 text-xs rounded border border-zinc-800 hover:border-teal-500/30 transition-colors"
-            title={t('navbar.importSqlTooltip')}
-          >
-            <Upload className="w-3.5 h-3.5 text-teal-400" />
-            <span>{t('navbar.importSql')}</span>
-          </button>
-        )}
+                  {onOpenProcessViewerModal && (
+                    <button
+                      type="button"
+                      disabled={!isConnected}
+                      onClick={() => {
+                        setIsToolsMenuOpen(false);
+                        onOpenProcessViewerModal();
+                      }}
+                      className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 disabled:opacity-40 disabled:pointer-events-none group"
+                    >
+                      <div className="mt-0.5 p-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:bg-amber-500/20">
+                        <Activity className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 flex items-center justify-between">
+                          <span>{t('navbar.processViewer')}</span>
+                          {!isConnected && <span className="text-[10px] text-zinc-500">({t('common.disconnected')})</span>}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                          {t('navbar.processViewerDesc')}
+                        </div>
+                      </div>
+                    </button>
+                  )}
 
-        {/* Schema Diff / Compare Action */}
-        {onOpenSchemaDiffModal && (
-          <button
-            onClick={onOpenSchemaDiffModal}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-indigo-300 hover:text-indigo-200 text-xs rounded border border-zinc-800 hover:border-indigo-500/30 transition-colors"
-            title={t('navbar.compareSchemasTooltip')}
-          >
-            <GitCompare className="w-3.5 h-3.5 text-indigo-400" />
-            <span>{t('navbar.compareSchemas')}</span>
-          </button>
-        )}
+                  {onOpenSchemaDiffModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsToolsMenuOpen(false);
+                        onOpenSchemaDiffModal();
+                      }}
+                      className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 group"
+                    >
+                      <div className="mt-0.5 p-1 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 group-hover:bg-indigo-500/20">
+                        <GitCompare className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100">
+                          {t('navbar.compareSchemas')}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                          {t('navbar.compareSchemasDesc')}
+                        </div>
+                      </div>
+                    </button>
+                  )}
+                </div>
 
-        {/* User & Privilege Manager Action */}
-        {isConnected && onOpenUserManagerModal && (
-          <button
-            onClick={onOpenUserManagerModal}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-sky-300 hover:text-sky-200 text-xs rounded border border-zinc-800 hover:border-sky-500/30 transition-colors"
-            title={t('navbar.userManagerTooltip')}
-          >
-            <Users className="w-3.5 h-3.5 text-sky-400" />
-            <span>{t('navbar.userManager')}</span>
-          </button>
-        )}
+                <div className="my-1.5 border-t border-zinc-800" />
+
+                {/* Section: Backups & Data */}
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  {t('navbar.toolsSectionData')}
+                </div>
+                <div className="px-1 space-y-0.5">
+                  {onOpenDumpModal && (
+                    <button
+                      type="button"
+                      disabled={!isConnected}
+                      onClick={() => {
+                        setIsToolsMenuOpen(false);
+                        onOpenDumpModal();
+                      }}
+                      className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 disabled:opacity-40 disabled:pointer-events-none group"
+                    >
+                      <div className="mt-0.5 p-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:bg-emerald-500/20">
+                        <Download className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 flex items-center justify-between">
+                          <span>{t('navbar.exportDump')}</span>
+                          {!isConnected && <span className="text-[10px] text-zinc-500">({t('common.disconnected')})</span>}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                          {t('navbar.exportDumpDesc')}
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  {onOpenImportModal && (
+                    <button
+                      type="button"
+                      disabled={!isConnected}
+                      onClick={() => {
+                        setIsToolsMenuOpen(false);
+                        onOpenImportModal();
+                      }}
+                      className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 disabled:opacity-40 disabled:pointer-events-none group"
+                    >
+                      <div className="mt-0.5 p-1 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20 group-hover:bg-teal-500/20">
+                        <Upload className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 flex items-center justify-between">
+                          <span>{t('navbar.importSql')}</span>
+                          {!isConnected && <span className="text-[10px] text-zinc-500">({t('common.disconnected')})</span>}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                          {t('navbar.importSqlDesc')}
+                        </div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+
+                <div className="my-1.5 border-t border-zinc-800" />
+
+                {/* Section: Schemas */}
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  {t('navbar.toolsSectionSchema')}
+                </div>
+                <div className="px-1 space-y-0.5">
+                  <button
+                    type="button"
+                    disabled={!isConnected}
+                    onClick={() => {
+                      setIsToolsMenuOpen(false);
+                      onOpenCreateDbModal();
+                    }}
+                    className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 disabled:opacity-40 disabled:pointer-events-none group"
+                  >
+                    <div className="mt-0.5 p-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:bg-emerald-500/20">
+                      <FolderPlus className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 flex items-center justify-between">
+                        <span>{t('navbar.createDb')}</span>
+                        {!isConnected && <span className="text-[10px] text-zinc-500">({t('common.disconnected')})</span>}
+                      </div>
+                      <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                        {t('navbar.createDbDesc')}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Center Status: Connected Server & Active Database */}

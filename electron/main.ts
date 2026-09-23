@@ -6,6 +6,7 @@ import { StorageService } from './storage-service';
 import { DumpService, DumpOptions, DumpProgress } from './dump-service';
 import { SchemaDiffService, SchemaCompareRequest, MigrationScriptOptions } from './schema-diff-service';
 import { UserService, UserSavePlan } from './user-service';
+import { ProcessService } from './process-service';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
@@ -15,6 +16,7 @@ const storageService = new StorageService();
 const dumpService = new DumpService(mariaService);
 const schemaDiffService = new SchemaDiffService(mariaService);
 const userService = new UserService(mariaService);
+const processService = new ProcessService(mariaService);
 
 interface WindowState {
   x?: number;
@@ -666,5 +668,26 @@ ipcMain.handle('user:revoke-global', async (_, { user, host }: { user: string; h
   } catch (err: any) {
     console.error('Error in user:revoke-global:', err);
     return { success: false, error: err.message || `Error al revocar privilegios globales` };
+  }
+});
+
+// IPC: Processlist Viewer & Manager
+ipcMain.handle('process:list', async () => {
+  try {
+    const data = await processService.getProcessList();
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error in process:list:', err);
+    return { success: false, error: err.message || 'Error al obtener la lista de procesos' };
+  }
+});
+
+ipcMain.handle('process:kill', async (_, { id, type }: { id: number; type?: 'CONNECTION' | 'QUERY' }) => {
+  try {
+    await processService.killProcess(id, type);
+    return { success: true };
+  } catch (err: any) {
+    console.error(`Error killing process ${id}:`, err);
+    return { success: false, error: err.message || `Error al terminar el proceso ${id}` };
   }
 });

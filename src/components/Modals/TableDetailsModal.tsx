@@ -14,6 +14,7 @@ import {
   Cpu,
   Hash
 } from 'lucide-react';
+import { TypeBadge } from '../Common/TypeBadge';
 
 interface TableDetailsModalProps {
   tableName: string | null;
@@ -182,54 +183,84 @@ export const TableDetailsModal: React.FC<TableDetailsModalProps> = ({
             <>
               {/* TAB 1: Columns */}
               {activeTab === 'columns' && (
-                <div className="overflow-auto border border-zinc-800 rounded-lg bg-zinc-950 font-mono">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-zinc-900 text-zinc-400 border-b border-zinc-800">
+                <div className="overflow-auto border border-zinc-800 rounded-xl bg-zinc-950 font-mono shadow-sm">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-zinc-900/90 text-zinc-400 border-b border-zinc-800 font-semibold select-none sticky top-0">
                       <tr>
-                        <th className="px-3 py-2">#</th>
-                        <th className="px-3 py-2">Columna</th>
-                        <th className="px-3 py-2">Tipo de Dato</th>
-                        <th className="px-3 py-2">Nullable</th>
-                        <th className="px-3 py-2">Clave</th>
-                        <th className="px-3 py-2">Predeterminado</th>
-                        <th className="px-3 py-2">Extra</th>
-                        <th className="px-3 py-2">Comentario</th>
+                        <th className="px-3 py-2.5 w-10 text-center">#</th>
+                        <th className="px-3 py-2.5 min-w-[180px]">Columna</th>
+                        <th className="px-3 py-2.5 min-w-[180px]">Tipo de Dato</th>
+                        <th className="px-3 py-2.5 text-center w-24">Nulabilidad</th>
+                        <th className="px-3 py-2.5 text-center w-28">Clave</th>
+                        <th className="px-3 py-2.5 w-36">Predeterminado</th>
+                        <th className="px-3 py-2.5 w-24 text-center">Extra</th>
+                        <th className="px-3 py-2.5">Comentario</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-900 text-zinc-300">
                       {details?.columns.map((col) => (
-                        <tr key={col.columnName} className="hover:bg-zinc-900/40">
-                          <td className="px-3 py-1.5 text-zinc-600">{col.position}</td>
-                          <td className="px-3 py-1.5 font-bold text-zinc-100">{col.columnName}</td>
-                          <td className="px-3 py-1.5 text-emerald-400">{col.fieldType}</td>
-                          <td className="px-3 py-1.5">
-                            {col.isNullable ? (
-                              <span className="text-zinc-500">NULL</span>
+                        <tr 
+                          key={col.columnName} 
+                          className={`hover:bg-zinc-900/50 transition-colors ${
+                            col.isPrimaryKey ? 'bg-amber-500/[0.04] border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'
+                          }`}
+                        >
+                          <td className="px-3 py-2 text-center text-zinc-500 text-[11px]">{col.position}</td>
+                          <td className="px-3 py-2 font-bold flex items-center gap-1.5">
+                            {col.isPrimaryKey ? (
+                              <>
+                                <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                <span className="text-amber-200">{col.columnName}</span>
+                              </>
                             ) : (
-                              <span className="text-amber-400 font-semibold">NOT NULL</span>
+                              <span className="text-zinc-100">{col.columnName}</span>
                             )}
                           </td>
-                          <td className="px-3 py-1.5">
+                          <td className="px-3 py-2">
+                            <TypeBadge typeStr={col.fieldType} size="sm" />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {col.isNullable ? (
+                              <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] border border-zinc-700">
+                                NULL
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30 text-[10px]">
+                                NOT NULL
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center">
                             {col.isPrimaryKey ? (
-                              <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 rounded text-[10px] font-bold">
-                                PRIMARY KEY
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[10px] font-bold">
+                                <Key className="w-2.5 h-2.5" /> PK
                               </span>
                             ) : col.isUnique ? (
-                              <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px]">
+                              <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-500/40 rounded text-[10px] font-semibold">
                                 UNIQUE
                               </span>
                             ) : (
-                              <span className="text-zinc-600">-</span>
+                              <span className="text-zinc-600 text-xs">—</span>
                             )}
                           </td>
-                          <td className="px-3 py-1.5 text-zinc-400 truncate max-w-xs">
-                            {col.defaultValue !== null ? col.defaultValue : <span className="text-zinc-600 italic">NULL</span>}
+                          <td className="px-3 py-2 text-zinc-300 truncate max-w-xs">
+                            {col.defaultValue !== null ? (
+                              <span className="text-zinc-200">{col.defaultValue}</span>
+                            ) : (
+                              <span className="text-zinc-600 italic">NULL</span>
+                            )}
                           </td>
-                          <td className="px-3 py-1.5 text-cyan-400">
-                            {col.isAutoIncrement ? 'auto_increment' : '-'}
+                          <td className="px-3 py-2 text-center">
+                            {col.isAutoIncrement || (col.extra && col.extra.toLowerCase().includes('auto_increment')) ? (
+                              <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-bold font-mono">
+                                ⚡ AI
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600">—</span>
+                            )}
                           </td>
-                          <td className="px-3 py-1.5 text-zinc-500 italic truncate max-w-xs">
-                            {col.comment || '-'}
+                          <td className="px-3 py-2 text-zinc-400 italic truncate max-w-xs text-[11px]">
+                            {col.comment || <span className="text-zinc-600 not-italic">—</span>}
                           </td>
                         </tr>
                       ))}

@@ -420,6 +420,39 @@ export interface ElectronAPI {
   dropUser: (user: string, host: string, isRole?: boolean) => Promise<IpcResponse<boolean>>;
   revokeDatabasePrivileges: (user: string, host: string, database: string) => Promise<IpcResponse<boolean>>;
   revokeAllGlobalPrivileges: (user: string, host: string) => Promise<IpcResponse<boolean>>;
+
+  // Processlist Viewer & Manager
+  getProcessList: () => Promise<IpcResponse<ProcessListResponse>>;
+  killProcess: (id: number, type?: 'CONNECTION' | 'QUERY') => Promise<IpcResponse<boolean>>;
+}
+
+export interface DbProcessItem {
+  id: number;
+  user: string;
+  host: string;
+  db: string | null;
+  command: string;
+  time: number;
+  state: string | null;
+  info: string | null;
+  memoryUsed?: number;
+  progress?: number;
+  isCurrentConnection: boolean;
+}
+
+export interface ProcessListSummary {
+  total: number;
+  active: number;
+  sleeping: number;
+  locked: number;
+  maxTime: number;
+}
+
+export interface ProcessListResponse {
+  processes: DbProcessItem[];
+  summary: ProcessListSummary;
+  currentConnectionId: number;
+  serverTime: string;
 }
 
 export type ServerFlavor = 'mariadb' | 'mysql';

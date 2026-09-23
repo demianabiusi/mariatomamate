@@ -13,6 +13,7 @@ import { DumpDatabaseModal } from './components/Modals/DumpDatabaseModal';
 import { ImportDatabaseModal } from './components/Modals/ImportDatabaseModal';
 import { SchemaDiffModal } from './components/Modals/SchemaDiffModal';
 import { UserManagerModal } from './components/Modals/UserManagerModal';
+import { ProcessViewerModal } from './components/Modals/ProcessViewerModal';
 import { Database, Plus, Sparkles } from 'lucide-react';
 import { useConnectionWorkspace } from './hooks/useConnectionWorkspace';
 
@@ -35,6 +36,7 @@ export const App: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSchemaDiffModalOpen, setIsSchemaDiffModalOpen] = useState(false);
   const [isUserManagerModalOpen, setIsUserManagerModalOpen] = useState(false);
+  const [isProcessViewerOpen, setIsProcessViewerOpen] = useState(false);
 
   // Workspace persistence
   const { hydrateWorkspace, saveWorkspaceNow, saveWorkspaceDebounced } = useConnectionWorkspace();
@@ -611,6 +613,7 @@ export const App: React.FC = () => {
         onOpenImportModal={() => setIsImportModalOpen(true)}
         onOpenSchemaDiffModal={() => setIsSchemaDiffModalOpen(true)}
         onOpenUserManagerModal={() => setIsUserManagerModalOpen(true)}
+        onOpenProcessViewerModal={() => setIsProcessViewerOpen(true)}
         onDisconnect={handleDisconnect}
         onNewQuery={handleAddTab}
       />
@@ -668,6 +671,7 @@ export const App: React.FC = () => {
             onCreateDatabase={() => setIsCreateDbModalOpen(true)}
             onOpenSchemaDiff={() => setIsSchemaDiffModalOpen(true)}
             onOpenUserManager={() => setIsUserManagerModalOpen(true)}
+            onOpenProcessViewer={() => setIsProcessViewerOpen(true)}
           />
         </div>
 
@@ -832,6 +836,24 @@ export const App: React.FC = () => {
           setTabs(prev => [...prev, {
             id: newId,
             title: title || 'Usuarios SQL',
+            sql,
+            result: null,
+            isRunning: false,
+            error: null,
+            activeResultTab: 'grid'
+          }]);
+          setActiveTabId(newId);
+        }}
+      />
+
+      <ProcessViewerModal
+        isOpen={isProcessViewerOpen}
+        onClose={() => setIsProcessViewerOpen(false)}
+        onOpenInSqlEditor={(sql, title) => {
+          const newId = 'tab_' + Date.now();
+          setTabs(prev => [...prev, {
+            id: newId,
+            title: title || 'Consulta Proceso',
             sql,
             result: null,
             isRunning: false,

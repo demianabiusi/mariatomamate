@@ -85,5 +85,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   revokeDatabasePrivileges: (user: string, host: string, database: string) => 
     ipcRenderer.invoke('user:revoke-database', { user, host, database }),
   revokeAllGlobalPrivileges: (user: string, host: string) => 
-    ipcRenderer.invoke('user:revoke-global', { user, host })
+    ipcRenderer.invoke('user:revoke-global', { user, host }),
+
+  // Processlist Viewer & Manager
+  getProcessList: () => ipcRenderer.invoke('process:list'),
+  killProcess: (id: number, type?: 'CONNECTION' | 'QUERY') => 
+    ipcRenderer.invoke('process:kill', { id, type })
 });

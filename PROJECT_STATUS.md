@@ -50,17 +50,36 @@ Fue construido utilizando el cliente Firebird (FirebirdYog) como referencia arqu
 - **Ejecución parcial:** Opción de ejecutar únicamente el texto seleccionado o la consulta completa.
 - **Límite de filas:** Selector de 100 a 100.000 filas (o sin límite).
 
-### D. Diseñador Visual de Tablas
-- Diseñador visual completo para MySQL y MariaDB:
-  - Nombre de tabla, motor (`InnoDB`, `MyISAM`, `MEMORY`), charset y collation.
-  - Campos con nombre, tipo (`INT`, `BIGINT`, `VARCHAR`, `TEXT`, `DECIMAL`, `DATETIME`, etc.), longitud/valores enum, `Unsigned`, `Null`, `Primary Key (PK)`, `Auto Increment (AI)`, valor predeterminado y comentario.
-  - Reordenamiento de columnas (subir/bajar) y eliminación.
-  - Vista previa de la sentencia DDL generada (`CREATE TABLE` o sentencias `ALTER TABLE` si es modificación).
-  - Ejecución directa con 1 clic o envío al editor SQL para ajustes manuales.
+### D. Diseñador Visual de Tablas (Table Designer Pro)
+- **Visualización y Tipografía de Alta Legibilidad:**
+  - **Nombres de Campo Destacados:** Fuente mono negrita de alto contraste con iconos integrados distintivos (🔑 para PK, ⚡ para AutoIncrement, # para campos regulares) y aviso visual de nombres anteriores en caso de renombrado.
+  - **Sistema Semántico de Tipos de Datos:** Colores temáticos e iconos específicos por categoría:
+    - 🔵 Numéricos enteros (`INT`, `BIGINT`, `TINYINT`, etc.) en azul/sky con icono `#`.
+    - 🔵 Decimales y precisión (`DECIMAL`, `DOUBLE`, `FLOAT`) en cian con indicador decimal.
+    - 🟢 Texto y cadenas (`VARCHAR`, `TEXT`, `CHAR`, `LONGTEXT`) en esmeralda con icono `Aa`.
+    - 🟠 Fechas y horas (`DATETIME`, `TIMESTAMP`, `DATE`, `TIME`) en ámbar con icono de calendario.
+    - 🟣 JSON y estructuras (`JSON`) en púrpura con icono `{}`.
+    - 🔴 Binarios (`BLOB`) en rosa con icono binario.
+    - 🟣 Enumerados (`ENUM`) en índigo con icono de etiqueta.
+  - **Selector de Tipos Agrupado:** Menú desplegable con categorías organizadas (`optgroup`) y sugerencias/límites de tamaño en línea.
+  - **Badges Interactivos de Atributos:** En lugar de simples checkboxes monótonos, cuenta con botones/pills visuales interactivos:
+    - `[ 🔑 PK ]`: Ámbar brillante activo / atenuado inactivo.
+    - `[ ⚡ AI ]`: Cian brillante activo / inactivo.
+    - `[ NOT NULL ]`: Esmeralda / `[ NULL ]` en zinc suave.
+    - `[ UNSIGNED ]`: Sky / `[ SIGNED ]` o guión atenuado si no aplica.
+  - **Doble Modo de Visualización:**
+    - **Cuadrícula Pro:** Tabla horizontal espaciosa con resaltado de fila activa/PK y anchos proporcionales.
+    - **Fichas / Tarjetas:** Vista desglosada en tarjetas modulares por campo, ideal para pantallas de menor resolución o inspección detallada.
+  - **Herramientas Rápidas:**
+    - Buscador en tiempo real de campos por nombre o tipo.
+    - Filtro rápido por categoría (PKs, AI, Numéricos, Texto, Fechas, etc.).
+    - Duplicación de campos con 1 clic (`Duplicar`).
+    - Métricas en vivo (KPIs de PKs, AI y Not Null).
+  - DDL en tiempo real (`CREATE TABLE` o `ALTER TABLE`) con ejecución directa o apertura en el editor SQL.
 
-### E. Detalles de Tabla e Índices
+### E. Detalles de Tabla e Índices (Table Details)
 - Modal detallado con pestañas para:
-  - Columnas (tipo, nulabilidad, clave, default, extra, comentario).
+  - **Columnas:** Renderizado enriquecido con `TypeBadge` semántico, indicador de clave primaria 🔑, badges claros de nulabilidad y autoincremento.
   - Índices (`SHOW INDEX`) con tipo (BTREE, HASH, etc.) y campos involucrados.
   - Claves Foráneas (Foreign Keys) con restricciones `ON UPDATE` y `ON DELETE`.
   - Triggers asociados a la tabla.
@@ -112,9 +131,42 @@ Fue construido utilizando el cliente Firebird (FirebirdYog) como referencia arqu
   - **Vista Previa SQL en Tiempo Real:** Visualizador con Monaco Editor que muestra el script exacto antes de aplicarlo.
   - Botón para abrir el script en una pestaña del editor SQL para ejecución o auditoría personalizada.
 
+### I. Visor de Procesos en Tiempo Real (Processlist Monitor con Polling)
+- **Monitoreo Continuo con Polling Configurable:**
+  - Frecuencia de actualización configurable: cada 1s, 2s, 3s, 5s, 10s o modo Manual.
+  - Botón de Pausa / Reanudación interactivo para congelar la lista e inspeccionar consultas sin parpadeos.
+  - Botón de refresco forzado inmediato.
+- **Métricas e Indicadores de Salud en Vivo (KPIs):**
+  - Conexiones totales, Consultas en ejecución (`Active`), Conexiones durmientes (`Sleep`), Detección de bloqueos de tablas o metadatos (`Locks`), y Mayor tiempo de ejecución en segundos.
+  - Resaltado visual de advertencia para consultas lentas (>10s amarillo, >60s rojo) o procesos en estado de bloqueo.
+- **Filtros Avanzados:**
+  - Búsqueda en tiempo real por ID, usuario, host, base de datos o fragmento de código SQL.
+  - Ocultar conexiones inactivas (`Sleep`).
+  - Ocultar la propia sesión del cliente (`Tú`).
+  - Filtrado específico por base de datos activa.
+- **Acciones y Control de Ejecución (KILL):**
+  - **Cancelar Consulta (`KILL QUERY <id>`):** Detiene la ejecución de una consulta lenta o colgada sin desconectar al cliente.
+  - **Terminar Conexión (`KILL <id>`):** Cierra por completo la sesión remota del cliente.
+  - Modal de confirmación de seguridad con advertencia especial si se intenta finalizar la propia sesión activa.
+- **Inspector Detallado de Consultas (Monaco SQL Editor):**
+  - Panel inferior deslizable con el código SQL formateado y resaltado de sintaxis.
+  - Botón para copiar SQL al portapapeles.
+  - Botón para enviar la consulta directamente a una nueva pestaña SQL para análisis con `EXPLAIN`.
+
+### J. Barra Superior Limpia y Menú Agrupado de Herramientas
+- **Diseño Adaptable y Profesional:**
+  - Soluciona la saturación de botones en pantallas de baja resolución (1366x768, laptops o pantallas divididas).
+  - Conserva el acceso rápido de 1 clic para **"+ Nueva Consulta"**.
+  - Agrupa todas las utilidades avanzadas en un menú desplegable elegante **"Herramientas ▾"**:
+    - **Servidor y Monitoreo:** *Usuarios y Permisos* (Administrador gráfico DBA), *Visor de Procesos* (Processlist en vivo con Kill), *Comparar Bases de Datos* (Diff de esquemas).
+    - **Copias de Seguridad y Datos:** *Exportar Dump SQL* (mysqldump completo), *Importar Archivo SQL* (lector streaming para archivos masivos).
+    - **Esquemas:** *Nueva Base de Datos* (asistente de creación de bases).
+  - Estados deshabilitados y badges informativos cuando no hay conexión activa.
+  - Accesos rápidos complementarios conservados en la barra de herramientas del árbol de objetos para usuarios avanzados.
+
 ---
 
 ## 3. 📦 Comprobación de Compilación
-- **Frontend Vite + React 19:** `npm run build:ui` compila exitosamente en ~180 ms.
+- **Frontend Vite + React 19:** `npm run build:ui` compila exitosamente.
 - **Backend Electron TypeScript:** `npm run build:electron` compila exitosamente sin errores.
 - **Build total:** `npm run build` verificado y funcional.
