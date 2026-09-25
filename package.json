@@ -57,7 +57,9 @@
       "category": "Development",
       "icon": "public/icon.png",
       "desktop": {
-        "StartupWMClass": "maria-toma-mate"
+        "entry": {
+          "StartupWMClass": "maria-toma-mate"
+        }
       }
     }
   },
