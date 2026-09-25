@@ -90,5 +90,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Processlist Viewer & Manager
   getProcessList: () => ipcRenderer.invoke('process:list'),
   killProcess: (id: number, type?: 'CONNECTION' | 'QUERY') => 
-    ipcRenderer.invoke('process:kill', { id, type })
+    ipcRenderer.invoke('process:kill', { id, type }),
+
+  // Server Variables & Status Monitor
+  getServerVariables: () => ipcRenderer.invoke('server:variables-get'),
+  setServerVariable: (name: string, value: string) => 
+    ipcRenderer.invoke('server:variable-set', { name, value })
 });

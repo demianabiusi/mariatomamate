@@ -429,6 +429,51 @@ export interface ElectronAPI {
   // Processlist Viewer & Manager
   getProcessList: () => Promise<IpcResponse<ProcessListResponse>>;
   killProcess: (id: number, type?: 'CONNECTION' | 'QUERY') => Promise<IpcResponse<boolean>>;
+
+  // Server Variables & Status Monitor
+  getServerVariables: () => Promise<IpcResponse<ServerVariablesResponse>>;
+  setServerVariable: (name: string, value: string) => Promise<IpcResponse<{ success: boolean; sql: string }>>;
+}
+
+export interface ServerVariableItem {
+  name: string;
+  value: string;
+  category: string;
+  isReadOnly?: boolean;
+}
+
+export interface ServerStatusItem {
+  name: string;
+  value: string;
+  category: string;
+  numericValue?: number;
+}
+
+export interface ServerOverviewMetrics {
+  version: string;
+  flavor: 'mariadb' | 'mysql';
+  uptimeSeconds: number;
+  uptimeFormatted: string;
+  threadsConnected: number;
+  threadsRunning: number;
+  maxConnections: number;
+  connectionUsagePct: number;
+  queriesTotal: number;
+  queriesPerSecond: number;
+  slowQueries: number;
+  bufferPoolSizeFormatted: string;
+  bufferPoolHitRatio: number | null;
+  bytesReceivedFormatted: string;
+  bytesSentFormatted: string;
+  openTables: number;
+  tableLocksWaited: number;
+}
+
+export interface ServerVariablesResponse {
+  variables: ServerVariableItem[];
+  status: ServerStatusItem[];
+  overview: ServerOverviewMetrics;
+  serverTime: string;
 }
 
 export interface DbProcessItem {

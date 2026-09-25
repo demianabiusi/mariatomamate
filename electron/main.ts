@@ -7,6 +7,7 @@ import { DumpService, DumpOptions, DumpProgress } from './dump-service';
 import { SchemaDiffService, SchemaCompareRequest, MigrationScriptOptions } from './schema-diff-service';
 import { UserService, UserSavePlan } from './user-service';
 import { ProcessService } from './process-service';
+import { ServerVariablesService } from './server-variables-service';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
@@ -17,6 +18,7 @@ const dumpService = new DumpService(mariaService);
 const schemaDiffService = new SchemaDiffService(mariaService);
 const userService = new UserService(mariaService);
 const processService = new ProcessService(mariaService);
+const serverVariablesService = new ServerVariablesService(mariaService);
 
 interface WindowState {
   x?: number;
@@ -696,5 +698,26 @@ ipcMain.handle('process:kill', async (_, { id, type }: { id: number; type?: 'CON
   } catch (err: any) {
     console.error(`Error killing process ${id}:`, err);
     return { success: false, error: err.message || `Error al terminar el proceso ${id}` };
+  }
+});
+
+// IPC: Server Variables & Status Monitor
+ipcMain.handle('server:variables-get', async () => {
+  try {
+    const data = await serverVariablesService.getServerVariables();
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error in server:variables-get:', err);
+    return { success: false, error: err.message || 'Error al obtener las variables del servidor' };
+  }
+});
+
+ipcMain.handle('server:variable-set', async (_, { name, value }: { name: string; value: string }) => {
+  try {
+    const result = await serverVariablesService.setServerVariable(name, value);
+    return { success: true, data: result };
+  } catch (err: any) {
+    console.error(`Error in server:variable-set for ${name}:`, err);
+    return { success: false, error: err.message || `Error al modificar la variable ${name}` };
   }
 });

@@ -14,6 +14,7 @@ import { ImportDatabaseModal } from './components/Modals/ImportDatabaseModal';
 import { SchemaDiffModal } from './components/Modals/SchemaDiffModal';
 import { UserManagerModal } from './components/Modals/UserManagerModal';
 import { ProcessViewerModal } from './components/Modals/ProcessViewerModal';
+import { ServerVariablesModal } from './components/Modals/ServerVariablesModal';
 import { Database, Plus, Sparkles } from 'lucide-react';
 import { useConnectionWorkspace } from './hooks/useConnectionWorkspace';
 import { useQueryHistory } from './hooks/useQueryHistory';
@@ -38,6 +39,7 @@ export const App: React.FC = () => {
   const [isSchemaDiffModalOpen, setIsSchemaDiffModalOpen] = useState(false);
   const [isUserManagerModalOpen, setIsUserManagerModalOpen] = useState(false);
   const [isProcessViewerOpen, setIsProcessViewerOpen] = useState(false);
+  const [isServerVariablesOpen, setIsServerVariablesOpen] = useState(false);
 
   // Workspace persistence
   const { hydrateWorkspace, saveWorkspaceNow, saveWorkspaceDebounced } = useConnectionWorkspace();
@@ -614,6 +616,7 @@ export const App: React.FC = () => {
         onOpenSchemaDiffModal={() => setIsSchemaDiffModalOpen(true)}
         onOpenUserManagerModal={() => setIsUserManagerModalOpen(true)}
         onOpenProcessViewerModal={() => setIsProcessViewerOpen(true)}
+        onOpenServerVariablesModal={() => setIsServerVariablesOpen(true)}
         onDisconnect={handleDisconnect}
         onNewQuery={handleAddTab}
       />
@@ -672,6 +675,7 @@ export const App: React.FC = () => {
             onOpenSchemaDiff={() => setIsSchemaDiffModalOpen(true)}
             onOpenUserManager={() => setIsUserManagerModalOpen(true)}
             onOpenProcessViewer={() => setIsProcessViewerOpen(true)}
+            onOpenServerVariables={() => setIsServerVariablesOpen(true)}
           />
         </div>
 
@@ -858,6 +862,25 @@ export const App: React.FC = () => {
           setTabs(prev => [...prev, {
             id: newId,
             title: title || 'Consulta Proceso',
+            sql,
+            result: null,
+            isRunning: false,
+            error: null,
+            activeResultTab: 'grid'
+          }]);
+          setActiveTabId(newId);
+        }}
+      />
+
+      <ServerVariablesModal
+        isOpen={isServerVariablesOpen}
+        onClose={() => setIsServerVariablesOpen(false)}
+        activeConfig={activeConfig}
+        onOpenInSqlEditor={(sql, title) => {
+          const newId = 'tab_' + Date.now();
+          setTabs(prev => [...prev, {
+            id: newId,
+            title: title || 'Variable SQL',
             sql,
             result: null,
             isRunning: false,

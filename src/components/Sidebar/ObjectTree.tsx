@@ -49,6 +49,7 @@ interface ObjectTreeProps {
   onOpenSchemaDiff?: () => void;
   onOpenUserManager?: () => void;
   onOpenProcessViewer?: () => void;
+  onOpenServerVariables?: () => void;
 }
 
 type ContextMenuItemType = 
@@ -93,7 +94,8 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
   onDropDatabase,
   onOpenSchemaDiff,
   onOpenUserManager,
-  onOpenProcessViewer
+  onOpenProcessViewer,
+  onOpenServerVariables
 }) => {
   const { t } = useTranslation();
   const [searchFilter, setSearchFilter] = useState('');
@@ -243,6 +245,15 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                 title={t('navbar.processViewerTooltip')}
               >
                 <Activity className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onOpenServerVariables && (
+              <button
+                onClick={onOpenServerVariables}
+                className="p-1 hover:text-cyan-400 text-zinc-400 hover:bg-zinc-800 rounded transition-colors"
+                title={t('navbar.serverVariablesTooltip')}
+              >
+                <Sliders className="w-3.5 h-3.5" />
               </button>
             )}
             <button

@@ -19,6 +19,7 @@ import {
   GitCompare,
   Users,
   Activity,
+  Sliders,
   Wrench
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ interface NavbarProps {
   onOpenSchemaDiffModal?: () => void;
   onOpenUserManagerModal?: () => void;
   onOpenProcessViewerModal?: () => void;
+  onOpenServerVariablesModal?: () => void;
   onDisconnect: () => void;
   onNewQuery: () => void;
 }
@@ -48,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSchemaDiffModal,
   onOpenUserManagerModal,
   onOpenProcessViewerModal,
+  onOpenServerVariablesModal,
   onDisconnect,
   onNewQuery
 }) => {
@@ -165,6 +168,31 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
                         <div className="text-[11px] text-zinc-400 leading-tight truncate">
                           {t('navbar.processViewerDesc')}
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  {onOpenServerVariablesModal && (
+                    <button
+                      type="button"
+                      disabled={!isConnected}
+                      onClick={() => {
+                        setIsToolsMenuOpen(false);
+                        onOpenServerVariablesModal();
+                      }}
+                      className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 disabled:opacity-40 disabled:pointer-events-none group"
+                    >
+                      <div className="mt-0.5 p-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 group-hover:bg-cyan-500/20">
+                        <Sliders className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 flex items-center justify-between">
+                          <span>{t('navbar.serverVariables')}</span>
+                          {!isConnected && <span className="text-[10px] text-zinc-500">({t('common.disconnected')})</span>}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                          {t('navbar.serverVariablesDesc')}
                         </div>
                       </div>
                     </button>
