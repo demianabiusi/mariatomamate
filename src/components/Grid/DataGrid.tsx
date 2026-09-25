@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { QueryResult } from '../../types';
 import { useTranslation } from '../../i18n/I18nContext';
-import { exportToCsv, exportToJson, exportToSqlInserts } from '../../utils/exporter';
+import { exportToCsv, exportToJson, exportToSqlInserts, exportToXlsx } from '../../utils/exporter';
 import { 
   Download, 
   Search, 
@@ -14,6 +14,7 @@ import {
   FileSpreadsheet,
   FileJson,
   FileText,
+  Table2,
   Clock,
   Layers,
   Pencil,
@@ -38,6 +39,7 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
   const [cellModalValue, setCellModalValue] = useState<{ col: string; value: any } | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [isExportingXlsx, setIsExportingXlsx] = useState(false);
 
   // Cell editing state
   const [editingCell, setEditingCell] = useState<{
@@ -208,15 +210,30 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
     setTimeout(() => setCopiedCell(null), 1500);
   };
 
-  const handleExport = async (type: 'csv' | 'json' | 'sql') => {
+  const handleExport = async (type: 'csv' | 'json' | 'sql' | 'xlsx') => {
     setShowExportMenu(false);
     if (!result?.rows || result.rows.length === 0) return;
 
-    let content = '';
     const now = new Date();
     const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
     const filename = `export_mariatomamate_${timestamp}.${type}`;
 
+    if (type === 'xlsx') {
+      setIsExportingXlsx(true);
+      try {
+        const uint8 = await exportToXlsx(result.columns, filteredAndSortedRows);
+        // IPC serializes Uint8Array as a plain object; convert to number[] explicitly
+        const asArray = Array.from(uint8);
+        if (window.electronAPI?.exportData) {
+          await window.electronAPI.exportData(asArray, filename, 'xlsx');
+        }
+      } finally {
+        setIsExportingXlsx(false);
+      }
+      return;
+    }
+
+    let content = '';
     if (type === 'csv') {
       content = exportToCsv(result.columns, filteredAndSortedRows);
     } else if (type === 'json') {
@@ -310,10 +327,15 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
           <div className="relative">
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded border border-zinc-700 transition-colors"
+              disabled={isExportingXlsx}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-60 disabled:cursor-wait text-zinc-200 rounded border border-zinc-700 transition-colors"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{t('grid.export')}</span>
+              {isExportingXlsx ? (
+                <div className="w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              <span>{isExportingXlsx ? t('grid.exportingXlsx') : t('grid.export')}</span>
             </button>
 
             {showExportMenu && (
@@ -322,7 +344,18 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
                   className="fixed inset-0 z-20" 
                   onClick={() => setShowExportMenu(false)} 
                 />
-                <div className="absolute right-0 mt-1 z-30 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl py-1 divide-y divide-zinc-800 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-0 mt-1 z-30 w-52 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl py-1 divide-y divide-zinc-800 animate-in fade-in zoom-in-95 duration-100">
+                  <button
+                    onClick={() => handleExport('xlsx')}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+                    title="Exportar como planilla de Excel (.xlsx)"
+                  >
+                    <Table2 className="w-4 h-4 text-green-400" />
+                    <div className="flex flex-col">
+                      <span>{t('grid.exportXlsx')}</span>
+                      <span className="text-[10px] text-zinc-500">Excel (.xlsx)</span>
+                    </div>
+                  </button>
                   <button
                     onClick={() => handleExport('csv')}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"

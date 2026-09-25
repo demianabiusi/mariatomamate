@@ -99,6 +99,218 @@ html[data-theme="dark"],
   color-scheme: dark;
 }
 
+/* ─── Dracula ────────────────────────────────────────────────────────────────
+   Paleta: fondo morado oscuro, acento cian/verde + rosa
+   https://draculatheme.com/contribute */
+html[data-theme="dracula"],
+[data-theme="dracula"] {
+  --color-zinc-950: #191a21;
+  --color-zinc-900: #21222c;
+  --color-zinc-800: #282a36;
+  --color-zinc-700: #44475a;
+  --color-zinc-600: #6272a4;
+  --color-zinc-500: #8189b0;
+  --color-zinc-400: #a0a8c8;
+  --color-zinc-300: #cdd6f4;
+  --color-zinc-200: #e2e8f4;
+  --color-zinc-100: #f8f8f2;
+  --color-zinc-50:  #ffffff;
+
+  /* Acento: verde Dracula (cian brillante) */
+  --color-emerald-950: #1a2a1e;
+  --color-emerald-900: #1e3b26;
+  --color-emerald-800: #1e5030;
+  --color-emerald-700: #1e6b3c;
+  --color-emerald-600: #22c55e;
+  --color-emerald-500: #50fa7b;
+  --color-emerald-400: #69ff94;
+  --color-emerald-300: #a0ffb8;
+  --color-emerald-200: #c6ffda;
+  --color-emerald-100: #e3ffed;
+
+  --color-teal-950: #0d2233;
+  --color-teal-900: #0d2d44;
+  --color-teal-400: #8be9fd;
+  --color-teal-300: #a8effe;
+  --color-teal-200: #c6f5ff;
+
+  --color-amber-950: #3a1f00;
+  --color-amber-900: #5c3200;
+  --color-amber-400: #ffb86c;
+  --color-amber-300: #ffd1a0;
+
+  --color-red-950: #3b0d1d;
+  --color-red-900: #5c1228;
+  --color-red-400: #ff5555;
+  --color-red-300: #ff8585;
+
+  --color-blue-950: #1a1f45;
+  --color-blue-900: #252b5c;
+  --color-blue-400: #bd93f9;
+  --color-blue-300: #d4b5fb;
+
+  color-scheme: dark;
+}
+
+/* ─── Tokyo Night ────────────────────────────────────────────────────────────
+   Paleta: azul noche muy oscuro, acento azul eléctrico + lavanda
+   https://github.com/enkia/tokyo-night-vscode-theme */
+html[data-theme="tokyo-night"],
+[data-theme="tokyo-night"] {
+  --color-zinc-950: #13141f;
+  --color-zinc-900: #1a1b2e;
+  --color-zinc-800: #24253a;
+  --color-zinc-700: #2f3048;
+  --color-zinc-600: #444674;
+  --color-zinc-500: #5e6194;
+  --color-zinc-400: #787eb0;
+  --color-zinc-300: #a9b1d6;
+  --color-zinc-200: #c0caf5;
+  --color-zinc-100: #d5dcff;
+  --color-zinc-50:  #f0f4ff;
+
+  /* Acento: verde azulado Tokyo Night */
+  --color-emerald-950: #0d1f25;
+  --color-emerald-900: #0d2c35;
+  --color-emerald-800: #0e3c48;
+  --color-emerald-700: #0f5264;
+  --color-emerald-600: #1abc8a;
+  --color-emerald-500: #9ece6a;
+  --color-emerald-400: #b9f27c;
+  --color-emerald-300: #d0f9a0;
+  --color-emerald-200: #e5fcc8;
+  --color-emerald-100: #f2ffea;
+
+  --color-teal-950: #0b1d2c;
+  --color-teal-900: #0f2840;
+  --color-teal-400: #7dcfff;
+  --color-teal-300: #a3d8ff;
+  --color-teal-200: #c7e9ff;
+
+  --color-amber-950: #2a1f00;
+  --color-amber-900: #3d2d00;
+  --color-amber-400: #e0af68;
+  --color-amber-300: #f0c88a;
+
+  --color-red-950: #2d0f18;
+  --color-red-900: #421522;
+  --color-red-400: #f7768e;
+  --color-red-300: #faa0b2;
+
+  --color-blue-950: #131625;
+  --color-blue-900: #1c2038;
+  --color-blue-400: #7aa2f7;
+  --color-blue-300: #a0bcf9;
+
+  color-scheme: dark;
+}
+
+/* ─── Solarized Dark ─────────────────────────────────────────────────────────
+   Paleta: tonos cálidos azul-verde, fondo teal oscuro
+   https://ethanschoonover.com/solarized/ */
+html[data-theme="solarized"],
+[data-theme="solarized"] {
+  --color-zinc-950: #00212b;
+  --color-zinc-900: #002b36;
+  --color-zinc-800: #073642;
+  --color-zinc-700: #094956;
+  --color-zinc-600: #3d6a76;
+  --color-zinc-500: #586e75;
+  --color-zinc-400: #657b83;
+  --color-zinc-300: #839496;
+  --color-zinc-200: #93a1a1;
+  --color-zinc-100: #eee8d5;
+  --color-zinc-50:  #fdf6e3;
+
+  /* Acento: verde Solarized */
+  --color-emerald-950: #002219;
+  --color-emerald-900: #003322;
+  --color-emerald-800: #00462e;
+  --color-emerald-700: #006039;
+  --color-emerald-600: #2aa198;
+  --color-emerald-500: #2aa198;
+  --color-emerald-400: #3cbfb5;
+  --color-emerald-300: #6ed6cc;
+  --color-emerald-200: #9fe7e2;
+  --color-emerald-100: #c8f3f0;
+
+  --color-teal-950: #001f1e;
+  --color-teal-900: #002d2c;
+  --color-teal-400: #2aa198;
+  --color-teal-300: #3cbfb5;
+  --color-teal-200: #6ed6cc;
+
+  --color-amber-950: #2b1d00;
+  --color-amber-900: #3d2900;
+  --color-amber-400: #b58900;
+  --color-amber-300: #d4a700;
+
+  --color-red-950: #2b0a0a;
+  --color-red-900: #3d1010;
+  --color-red-400: #dc322f;
+  --color-red-300: #f0504e;
+
+  --color-blue-950: #001433;
+  --color-blue-900: #001e4a;
+  --color-blue-400: #268bd2;
+  --color-blue-300: #46a4e8;
+
+  color-scheme: dark;
+}
+
+/* ─── Nord ───────────────────────────────────────────────────────────────────
+   Paleta: azules árticos fríos, acentos celeste suave
+   https://www.nordtheme.com/ */
+html[data-theme="nord"],
+[data-theme="nord"] {
+  --color-zinc-950: #1a1f2b;
+  --color-zinc-900: #2e3440;
+  --color-zinc-800: #3b4252;
+  --color-zinc-700: #434c5e;
+  --color-zinc-600: #4c566a;
+  --color-zinc-500: #7a869e;
+  --color-zinc-400: #9ba9bc;
+  --color-zinc-300: #d8dee9;
+  --color-zinc-200: #e5e9f0;
+  --color-zinc-100: #eceff4;
+  --color-zinc-50:  #ffffff;
+
+  /* Acento: verde-azul ártico de Nord */
+  --color-emerald-950: #1a2d2d;
+  --color-emerald-900: #1e3838;
+  --color-emerald-800: #224b4b;
+  --color-emerald-700: #256060;
+  --color-emerald-600: #8fbcbb;
+  --color-emerald-500: #88c0d0;
+  --color-emerald-400: #a3cfdb;
+  --color-emerald-300: #c2dfe6;
+  --color-emerald-200: #d8edf1;
+  --color-emerald-100: #edf6f9;
+
+  --color-teal-950: #1a2b2e;
+  --color-teal-900: #1e3438;
+  --color-teal-400: #8fbcbb;
+  --color-teal-300: #a8cece;
+  --color-teal-200: #c2dfdf;
+
+  --color-amber-950: #2b2218;
+  --color-amber-900: #3d3020;
+  --color-amber-400: #ebcb8b;
+  --color-amber-300: #f1d9a5;
+
+  --color-red-950: #2b1a1a;
+  --color-red-900: #3d2222;
+  --color-red-400: #bf616a;
+  --color-red-300: #d48a92;
+
+  --color-blue-950: #1a2133;
+  --color-blue-900: #212d46;
+  --color-blue-400: #81a1c1;
+  --color-blue-300: #a0bdd4;
+
+  color-scheme: dark;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -126,7 +338,7 @@ body {
   user-select: none;
   background-color: var(--color-zinc-950);
   color: var(--color-zinc-100);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 code, pre, .font-mono {

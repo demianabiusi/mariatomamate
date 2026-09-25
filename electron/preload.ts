@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File dialogs
   saveSqlFile: (content: string, defaultPath?: string) => ipcRenderer.invoke('dialog:save-sql-file', content, defaultPath),
   openSqlFile: () => ipcRenderer.invoke('dialog:open-sql-file'),
-  exportData: (data: string, defaultFilename: string, type: 'csv' | 'json' | 'sql') => 
+  exportData: (data: string | number[], defaultFilename: string, type: 'csv' | 'json' | 'sql' | 'xlsx') => 
     ipcRenderer.invoke('dialog:export-data', data, defaultFilename, type),
   
   // Database Dump / Export

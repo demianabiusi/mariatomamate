@@ -388,7 +388,7 @@ export interface ElectronAPI {
   // File dialogs & utilities
   saveSqlFile: (content: string, defaultPath?: string) => Promise<boolean>;
   openSqlFile: () => Promise<{ content: string; filePath: string } | null>;
-  exportData: (data: string, defaultFilename: string, type: 'csv' | 'json' | 'sql') => Promise<boolean>;
+  exportData: (data: string | number[], defaultFilename: string, type: 'csv' | 'json' | 'sql' | 'xlsx') => Promise<boolean>;
 
   // Database Dump / Export
   selectDumpFile: (defaultFilename?: string) => Promise<string | null>;

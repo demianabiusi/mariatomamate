@@ -96,7 +96,11 @@
   "theme": {
     "title": "Estilo visual",
     "light": "Claro",
-    "dark": "Oscuro"
+    "dark": "Oscuro",
+    "dracula": "Dracula",
+    "tokyoNight": "Tokyo Night",
+    "solarized": "Solarized",
+    "nord": "Nord"
   },
   "sidebar": {
     "databases": "Bases de Datos",
@@ -146,7 +150,7 @@
     "executeSelection": "Ejecutar Selección",
     "executeTooltip": "Ejecutar consulta (F9 o Ctrl+Enter)",
     "stop": "Detener",
-    "formatSql": "Formatear",
+    "formatSql": "Formatear SQL (Ctrl+Shift+F)",
     "openSql": "Abrir SQL...",
     "saveSql": "Guardar SQL...",
     "clear": "Limpiar",
@@ -165,6 +169,8 @@
     "historyTab": "Historial",
     "filterPlaceholder": "Filtrar resultados en pantalla...",
     "export": "Exportar",
+    "exportXlsx": "Exportar a Excel",
+    "exportingXlsx": "Generando Excel...",
     "exportCsv": "Exportar a CSV",
     "exportJson": "Exportar a JSON",
     "exportSql": "Exportar como INSERTs SQL",

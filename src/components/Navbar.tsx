@@ -53,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { t, language, setLanguage, availableLanguages } = useTranslation();
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
-  const { theme, setTheme, availableThemes } = useTheme();
+  const { theme, setTheme, availableThemes, currentThemeOption } = useTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
 
@@ -372,50 +372,63 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-1.5 px-2 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg text-xs font-medium transition-colors"
             title={t('navbar.themeTooltip')}
           >
-            {theme === 'light' ? (
-              <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
-            ) : (
-              <Moon className="w-3.5 h-3.5 text-indigo-400 fill-indigo-400/20" />
-            )}
+            {/* Mini swatch del tema activo */}
+            <span className="text-base leading-none" aria-hidden>{currentThemeOption.icon}</span>
             <span className="text-[11px] font-medium hidden sm:inline">
-              {t(`theme.${theme}`)}
+              {t(currentThemeOption.nameKey)}
             </span>
             <ChevronDown className="w-3 h-3 text-zinc-500" />
           </button>
 
           {isThemeMenuOpen && (
             <>
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setIsThemeMenuOpen(false)} 
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setIsThemeMenuOpen(false)}
               />
-              <div className="absolute right-0 mt-1.5 z-50 w-32 bg-zinc-900 border border-zinc-700/80 rounded-lg shadow-xl py-1 divide-y divide-zinc-800/60 animate-in fade-in zoom-in-95 duration-100">
-                {availableThemes.map((th) => (
-                  <button
-                    key={th.id}
-                    type="button"
-                    onClick={() => {
-                      setTheme(th.id);
-                      setIsThemeMenuOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors ${
-                      theme === th.id
-                        ? 'bg-emerald-500/15 text-emerald-400 font-semibold'
-                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
-                    }`}
-                  >
-                    {th.id === 'light' ? (
-                      <Sun className="w-3.5 h-3.5 text-amber-500" />
-                    ) : (
-                      <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                    )}
-                    <span>{t(th.nameKey)}</span>
-                  </button>
-                ))}
+              <div className="absolute right-0 mt-1.5 z-50 w-52 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl py-1.5 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                <p className="px-3 py-1 text-[10px] text-zinc-500 uppercase tracking-widest font-semibold select-none">
+                  {t('navbar.themeTooltip')}
+                </p>
+                {availableThemes.map((th) => {
+                  const isActive = theme === th.id;
+                  return (
+                    <button
+                      key={th.id}
+                      type="button"
+                      onClick={() => {
+                        setTheme(th.id);
+                        setIsThemeMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left transition-colors ${
+                        isActive
+                          ? 'bg-zinc-800 text-zinc-100'
+                          : 'text-zinc-300 hover:bg-zinc-800/70 hover:text-zinc-100'
+                      }`}
+                    >
+                      {/* Preview pill: bg + accent dot */}
+                      <span
+                        className="w-8 h-5 rounded-md border border-white/10 shrink-0 flex items-center justify-center relative overflow-hidden"
+                        style={{ backgroundColor: th.bgColor }}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: th.accentColor }}
+                        />
+                      </span>
+                      <span className="text-base leading-none shrink-0" aria-hidden>{th.icon}</span>
+                      <span className="flex-1">{t(th.nameKey)}</span>
+                      {isActive && (
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: th.accentColor }} />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </>
           )}
         </div>
+
 
         {/* Connect / Change Connection */}
         <button

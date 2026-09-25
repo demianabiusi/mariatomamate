@@ -1,11 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Editor, { OnMount, loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
+import { format as formatSqlFormatter } from 'sql-formatter';
 import { useTranslation } from '../../i18n/I18nContext';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme, registerMonacoThemes } from '../../theme/ThemeContext';
 
-// Ensure Monaco uses local offline bundle
+// Ensure Monaco uses local offline bundle and register custom themes
 loader.config({ monaco });
+loader.init().then(m => registerMonacoThemes(m));
 import { SchemaObjects } from '../../types';
 import { 
   Play, 
@@ -44,7 +46,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   schema
 }) => {
   const { t } = useTranslation();
-  const { theme } = useTheme();
+  const { currentThemeOption } = useTheme();
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const executeKey = swapF9F5 ? 'F5' : 'F9';
@@ -87,6 +89,10 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   useEffect(() => {
     schemaRef.current = schema;
   }, [schema]);
+
+  // Forward-ref to handleFormatSql (defined below) so the Ctrl+Shift+F
+  // command registered in handleEditorDidMount never captures a stale closure.
+  const handleFormatSqlRef = useRef<() => void>(() => {});
 
   const completionDisposableRef = useRef<any>(null);
 
@@ -408,6 +414,11 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
         onExecuteRef.current(selectedText && selectedText.trim() ? selectedText.trim() : (fullText && fullText.trim() ? fullText.trim() : undefined));
       }
     });
+
+    // Ctrl+Shift+F — Format SQL
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+      handleFormatSqlRef.current();
+    });
   };
 
   const handleSaveFile = async () => {
@@ -432,10 +443,56 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   };
 
   const handleFormatSql = () => {
-    if (editorRef.current) {
-      editorRef.current.getAction('editor.action.formatDocument')?.run();
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const selection = editor.getSelection();
+    const hasSelection = selection && !selection.isEmpty();
+    const textToFormat = hasSelection
+      ? editor.getModel()?.getValueInRange(selection) ?? ''
+      : editor.getValue();
+
+    if (!textToFormat.trim()) return;
+
+    try {
+      const formatted = formatSqlFormatter(textToFormat, {
+        language: 'mariadb',
+        tabWidth: 2,
+        keywordCase: 'upper',
+        identifierCase: 'preserve',
+        dataTypeCase: 'upper',
+        functionCase: 'upper',
+        logicalOperatorNewline: 'before',
+        expressionWidth: 60,
+      });
+
+      if (hasSelection && selection) {
+        editor.executeEdits('sql-formatter', [
+          { range: selection, text: formatted, forceMoveMarkers: true }
+        ]);
+      } else {
+        // Preserve cursor / scroll position for full-doc format
+        const position = editor.getPosition();
+        const scrollTop = editor.getScrollTop();
+        editor.executeEdits('sql-formatter', [
+          {
+            range: editor.getModel()!.getFullModelRange(),
+            text: formatted,
+            forceMoveMarkers: true,
+          }
+        ]);
+        if (position) editor.setPosition(position);
+        editor.setScrollTop(scrollTop);
+      }
+
+      editor.focus();
+    } catch {
+      // Silently ignore parse errors — leave editor content unchanged
     }
   };
+
+  // Keep the ref in sync on every render so Monaco's Ctrl+Shift+F always calls the latest version
+  handleFormatSqlRef.current = handleFormatSql;
 
   const handleClear = () => {
     if (editorRef.current) {
@@ -583,7 +640,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
         <Editor
           height="100%"
           defaultLanguage="sql"
-          theme={theme === 'light' ? 'vs' : 'vs-dark'}
+          theme={currentThemeOption.monacoTheme}
           defaultValue={sql}
           onChange={handleEditorChange}
           onMount={handleEditorDidMount}

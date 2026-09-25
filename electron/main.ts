@@ -434,9 +434,9 @@ ipcMain.handle('dialog:open-sql-file', async () => {
   return { content, filePath: filePaths[0] };
 });
 
-ipcMain.handle('dialog:export-data', async (_, data: string, defaultFilename: string, type: 'csv' | 'json' | 'sql') => {
+ipcMain.handle('dialog:export-data', async (_, data: string | Buffer | number[], defaultFilename: string, type: 'csv' | 'json' | 'sql' | 'xlsx') => {
   if (!mainWindow) return false;
-  const extensions = type === 'csv' ? ['csv'] : type === 'json' ? ['json'] : ['sql'];
+  const extensions = type === 'csv' ? ['csv'] : type === 'json' ? ['json'] : type === 'xlsx' ? ['xlsx'] : ['sql'];
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: `Exportar resultados (${type.toUpperCase()})`,
     defaultPath: defaultFilename,
@@ -446,7 +446,14 @@ ipcMain.handle('dialog:export-data', async (_, data: string, defaultFilename: st
     ]
   });
   if (canceled || !filePath) return false;
-  fs.writeFileSync(filePath, data, 'utf-8');
+
+  if (type === 'xlsx') {
+    // data arrives as a plain number[] (JSON-serialized Uint8Array over IPC)
+    const buf = Array.isArray(data) ? Buffer.from(data as number[]) : Buffer.from(data as any);
+    fs.writeFileSync(filePath, buf);
+  } else {
+    fs.writeFileSync(filePath, data as string, 'utf-8');
+  }
   return true;
 });
 
