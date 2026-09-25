@@ -134,10 +134,15 @@ export interface QueryHistoryItem {
   id: string;
   sql: string;
   timestamp: string;
+  createdAt?: number;
   durationMs: number;
   status: 'success' | 'error';
   rowCount?: number;
   error?: string;
+  database?: string;
+  connectionId?: string;
+  connectionName?: string;
+  isFavorite?: boolean;
 }
 
 export interface IpcResponse<T = any> {

@@ -16,6 +16,7 @@ import { UserManagerModal } from './components/Modals/UserManagerModal';
 import { ProcessViewerModal } from './components/Modals/ProcessViewerModal';
 import { Database, Plus, Sparkles } from 'lucide-react';
 import { useConnectionWorkspace } from './hooks/useConnectionWorkspace';
+import { useQueryHistory } from './hooks/useQueryHistory';
 
 const INITIAL_QUERY = `-- Bienvenido a Maria Toma Mate 🧉
 -- Cliente visual ligero y moderno para MariaDB y MySQL
@@ -103,8 +104,18 @@ export const App: React.FC = () => {
   });
   const [isDraggingEditor, setIsDraggingEditor] = useState(false);
 
-  // History
-  const [history, setHistory] = useState<QueryHistoryItem[]>([]);
+  // History persistence & management
+  const {
+    history,
+    addEntry: addHistoryEntry,
+    toggleFavorite: handleToggleFavoriteHistoryItem,
+    deleteEntry: handleDeleteHistoryItem,
+    clearHistory: handleClearHistory,
+  } = useQueryHistory({
+    activeConnectionId: activeConfig?.id,
+    activeConnectionName: activeConfig?.name,
+    activeDatabase,
+  });
 
   // Modals
   const [selectedTableForDetails, setSelectedTableForDetails] = useState<string | null>(null);
@@ -386,18 +397,14 @@ export const App: React.FC = () => {
             activeResultTab: queryRes.columns.length > 0 && queryRes.columns[0] !== 'RESULTADO' ? 'grid' : 'messages'
           } : t));
 
-          // Log to history
-          setHistory(prev => [
-            {
-              id: 'hist_' + Date.now(),
-              sql: queryToRun,
-              timestamp: new Date().toLocaleTimeString(),
-              durationMs,
-              status: 'success',
-              rowCount: queryRes.rowCount
-            },
-            ...prev.slice(0, 150)
-          ]);
+          // Log to persistent history
+          addHistoryEntry({
+            sql: queryToRun,
+            durationMs,
+            status: 'success',
+            rowCount: queryRes.rowCount,
+            database: activeDatabase || undefined,
+          });
 
           // If query was USE database, update active database and persist
           const useMatch = queryToRun.match(/^\s*USE\s+[`"']?([a-zA-Z0-9_$]+)[`"']?\s*;?$/i);
@@ -434,17 +441,14 @@ export const App: React.FC = () => {
             activeResultTab: 'messages'
           } : t));
 
-          setHistory(prev => [
-            {
-              id: 'hist_' + Date.now(),
-              sql: queryToRun,
-              timestamp: new Date().toLocaleTimeString(),
-              durationMs,
-              status: 'error',
-              error: errMsg
-            },
-            ...prev.slice(0, 150)
-          ]);
+          // Log to persistent history
+          addHistoryEntry({
+            sql: queryToRun,
+            durationMs,
+            status: 'error',
+            error: errMsg,
+            database: activeDatabase || undefined,
+          });
         }
       }
     } catch (err: any) {
@@ -456,21 +460,17 @@ export const App: React.FC = () => {
         activeResultTab: 'messages'
       } : t));
     }
-  }, [refreshSchema, saveWorkspaceNow]);
+  }, [refreshSchema, saveWorkspaceNow, addHistoryEntry, activeDatabase]);
 
   const handleRowUpdated = useCallback((_newRow: Record<string, any>, sql: string) => {
-    setHistory(prev => [
-      {
-        id: 'hist_' + Date.now(),
-        sql,
-        timestamp: new Date().toLocaleTimeString(),
-        durationMs: 1,
-        status: 'success',
-        rowCount: 1
-      },
-      ...prev.slice(0, 150)
-    ]);
-  }, []);
+    addHistoryEntry({
+      sql,
+      durationMs: 1,
+      status: 'success',
+      rowCount: 1,
+      database: activeDatabase || undefined,
+    });
+  }, [addHistoryEntry, activeDatabase]);
 
   // Keyboard shortcut listener (Ctrl+N, Ctrl+T, Ctrl+W, F9, F5, Ctrl+Enter)
   useEffect(() => {
@@ -735,7 +735,11 @@ export const App: React.FC = () => {
               onSelectTab={handleUpdateActiveTabResultTab}
               history={history}
               onSelectHistorySql={(sql) => handleUpdateActiveSql(sql)}
-              onClearHistory={() => setHistory([])}
+              onClearHistory={handleClearHistory}
+              onToggleFavorite={handleToggleFavoriteHistoryItem}
+              onDeleteHistoryItem={handleDeleteHistoryItem}
+              currentConnectionId={activeConfig?.id}
+              currentConnectionName={activeConfig?.name}
               onRowUpdated={handleRowUpdated}
             />
           </div>

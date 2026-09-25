@@ -2,6 +2,7 @@ import React from 'react';
 import { QueryResult, QueryHistoryItem } from '../../types';
 import { useTranslation } from '../../i18n/I18nContext';
 import { DataGrid } from './DataGrid';
+import { HistoryPanel } from './HistoryPanel';
 import { 
   Table as TableIcon, 
   Terminal, 
@@ -20,7 +21,11 @@ interface OutputPanelProps {
   onSelectTab: (tab: 'grid' | 'messages' | 'history') => void;
   history: QueryHistoryItem[];
   onSelectHistorySql: (sql: string) => void;
-  onClearHistory: () => void;
+  onClearHistory: (keepFavorites?: boolean, forConnectionOnly?: boolean) => void;
+  onToggleFavorite?: (id: string) => void;
+  onDeleteHistoryItem?: (id: string) => void;
+  currentConnectionId?: string | null;
+  currentConnectionName?: string | null;
   onRowUpdated?: (newRow: Record<string, any>, sql: string) => void;
 }
 
@@ -33,6 +38,10 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   history,
   onSelectHistorySql,
   onClearHistory,
+  onToggleFavorite,
+  onDeleteHistoryItem,
+  currentConnectionId,
+  currentConnectionName,
   onRowUpdated
 }) => {
   const { t } = useTranslation();
@@ -92,7 +101,15 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            <span>{t('grid.historyTab')} ({history.length})</span>
+            <span>{t('grid.historyTab')}</span>
+            <span className="text-[10px] bg-zinc-800 px-1.5 py-0.2 rounded text-zinc-300 font-mono">
+              {history.length}
+            </span>
+            {history.some((i) => i.isFavorite) && (
+              <span className="text-amber-400 font-bold text-[11px]" title="Contiene consultas favoritas">
+                ★
+              </span>
+            )}
           </button>
         </div>
 
@@ -155,67 +172,15 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
 
         {/* 3. History View */}
         {activeTab === 'history' && (
-          <div className="flex flex-col h-full bg-zinc-950 select-none">
-            <div className="p-2 border-b border-zinc-800 flex justify-end">
-              <button
-                onClick={onClearHistory}
-                disabled={history.length === 0}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-zinc-400 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-900 rounded transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{t('grid.clearHistory')}</span>
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto p-3 divide-y divide-zinc-900">
-              {history.length === 0 ? (
-                <div className="text-center py-10 text-zinc-500 text-xs">
-                  {t('grid.historyEmpty')}
-                </div>
-              ) : (
-                history.map((item) => (
-                  <div key={item.id} className="py-2 flex items-start justify-between gap-3 group">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full ${item.status === 'success' ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                        <span className="text-[11px] text-zinc-500 font-mono">{item.timestamp}</span>
-                        <span className="text-[11px] text-zinc-400 font-mono">({item.durationMs} ms)</span>
-                        {item.rowCount !== undefined && (
-                          <span className="text-[10px] bg-zinc-800 px-1 py-0.2 rounded text-zinc-400">
-                            {item.rowCount} filas
-                          </span>
-                        )}
-                      </div>
-                      <div className="font-mono text-xs text-zinc-300 truncate group-hover:text-emerald-300 cursor-pointer" onClick={() => onSelectHistorySql(item.sql)}>
-                        {item.sql.replace(/\s+/g, ' ')}
-                      </div>
-                      {item.error && (
-                        <div className="text-[11px] text-red-400 truncate mt-0.5">
-                          {item.error}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => onSelectHistorySql(item.sql)}
-                        className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded transition-colors"
-                      >
-                        Cargar
-                      </button>
-                      <button
-                        onClick={() => navigator.clipboard.writeText(item.sql)}
-                        className="p-1 hover:text-emerald-400 text-zinc-400 transition-colors"
-                        title={t('common.copy')}
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          <HistoryPanel
+            history={history}
+            onSelectHistorySql={onSelectHistorySql}
+            onClearHistory={onClearHistory}
+            onToggleFavorite={onToggleFavorite}
+            onDeleteHistoryItem={onDeleteHistoryItem}
+            currentConnectionId={currentConnectionId}
+            currentConnectionName={currentConnectionName}
+          />
         )}
 
       </div>
