@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.0](https://github.com/demianabiusi/mariatomamate/compare/maria-toma-mate-v1.1.0...maria-toma-mate-v1.2.0) (2026-09-25)
+
+
+### ✨ Features
+
+* manejador grafico de usuarios, permisos y claves adaptado a versiones de MySQL y MariaDB ([0a6127b](https://github.com/demianabiusi/mariatomamate/commit/0a6127be3d28a1c3acf20ced7567d6b5e4b3baec))
+* persistent query history with search, favorites and connection filters ([9fc1df3](https://github.com/demianabiusi/mariatomamate/commit/9fc1df30cffb5927068633369683a0297a4fb1b6))
+* real-time server variables & status monitor with KPIs, filters and SET GLOBAL ([9c4e918](https://github.com/demianabiusi/mariatomamate/commit/9c4e9186d2cce1384d5e7ba1e5bb3dbdd76106d3))
+* soporte para icono en AppImage y autenticacion mysql_old_password ([678b61a](https://github.com/demianabiusi/mariatomamate/commit/678b61a870961ce25584da207feec0eff03215ea))
+* SQL formatter, Excel export and 6 visual themes ([3d08d1f](https://github.com/demianabiusi/mariatomamate/commit/3d08d1fb5684f789d068e2e982a286278c144ed5))
+* VS Code style command palette (Ctrl+P / Ctrl+K) with instant navigation ([7ac6cf3](https://github.com/demianabiusi/mariatomamate/commit/7ac6cf3a6d973809801ee736e04073074e39d72e))
+
+
+### 🐛 Bug Fixes
+
+* corregir estructura de linux.desktop en package.json para empaquetado AppImage ([2637cef](https://github.com/demianabiusi/mariatomamate/commit/2637cefb5974798af60430d6da437a246c3866f3))
+* replace false 'no connection' warning with skeleton loader in sidebar ([b8dca02](https://github.com/demianabiusi/mariatomamate/commit/b8dca02ab32edf4d5ef49c84296303779fb4cc0b))
+* solucionar salto de cursor y mejorar autocompletado en editor SQL ([45c8e57](https://github.com/demianabiusi/mariatomamate/commit/45c8e5730a006d5ac6af3837efaddddf461aa632))
+
 ## [1.1.0](https://github.com/demianabiusi/mariatomamate/compare/maria-toma-mate-v1.0.0...maria-toma-mate-v1.1.0) (2026-09-16)
 
 
