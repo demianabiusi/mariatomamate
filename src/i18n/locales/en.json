@@ -48,6 +48,8 @@
     "serverVariables": "Server Variables",
     "serverVariablesTooltip": "Monitor global server variables, status and performance metrics",
     "serverVariablesDesc": "Global variables, live metrics & SET GLOBAL",
+    "commandPalette": "Search or Command...",
+    "commandPaletteTooltip": "Command Palette and Quick Navigation (Ctrl+P / Ctrl+K)",
     "tools": "Tools",
     "toolsTooltip": "Server, data, and schema tools",
     "toolsSectionServer": "Server & Monitoring",
@@ -135,6 +137,23 @@
     "readOnlyNotice": "Note: Some variables are static (read-only) and require restarting the server or modifying my.cnf / my.ini.",
     "exportCsv": "Export to CSV",
     "exportJson": "Export to JSON"
+  },
+  "commandPalette": {
+    "placeholder": "Type a command or search a table... (> commands, # tables, db: databases)",
+    "noResults": "No matching commands or objects found.",
+    "catAction": "Command",
+    "catTable": "Table",
+    "catView": "View",
+    "catProcedure": "Procedure",
+    "catFunction": "Function",
+    "catTrigger": "Trigger",
+    "catEvent": "Event",
+    "catDatabase": "Database",
+    "catTheme": "Theme",
+    "catLanguage": "Language",
+    "hintNavigate": "to navigate",
+    "hintSelect": "to execute",
+    "hintClose": "to close"
   },
   "theme": {
     "title": "Visual Theme",

@@ -48,6 +48,8 @@
     "serverVariables": "Variables del Servidor",
     "serverVariablesTooltip": "Monitor de variables globales, status y métricas de rendimiento",
     "serverVariablesDesc": "Variables globales, métricas en vivo y SET GLOBAL",
+    "commandPalette": "Buscar o Comando...",
+    "commandPaletteTooltip": "Paleta de comandos y navegación rápida (Ctrl+P / Ctrl+K)",
     "tools": "Herramientas",
     "toolsTooltip": "Herramientas de servidor, datos y esquemas",
     "toolsSectionServer": "Servidor y Monitoreo",
@@ -135,6 +137,23 @@
     "readOnlyNotice": "Nota: Algunas variables son estáticas (solo lectura) y requieren reiniciar el servidor o modificar my.cnf / my.ini.",
     "exportCsv": "Exportar a CSV",
     "exportJson": "Exportar a JSON"
+  },
+  "commandPalette": {
+    "placeholder": "Escribe un comando o busca una tabla... (> comandos, # tablas, db: bases)",
+    "noResults": "No se encontraron comandos u objetos que coincidan.",
+    "catAction": "Comando",
+    "catTable": "Tabla",
+    "catView": "Vista",
+    "catProcedure": "Procedimiento",
+    "catFunction": "Función",
+    "catTrigger": "Trigger",
+    "catEvent": "Evento",
+    "catDatabase": "Base de Datos",
+    "catTheme": "Tema",
+    "catLanguage": "Idioma",
+    "hintNavigate": "para navegar",
+    "hintSelect": "para ejecutar",
+    "hintClose": "para cerrar"
   },
   "theme": {
     "title": "Estilo visual",

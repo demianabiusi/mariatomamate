@@ -15,6 +15,7 @@ import { SchemaDiffModal } from './components/Modals/SchemaDiffModal';
 import { UserManagerModal } from './components/Modals/UserManagerModal';
 import { ProcessViewerModal } from './components/Modals/ProcessViewerModal';
 import { ServerVariablesModal } from './components/Modals/ServerVariablesModal';
+import { CommandPaletteModal } from './components/Modals/CommandPaletteModal';
 import { Database, Plus, Sparkles } from 'lucide-react';
 import { useConnectionWorkspace } from './hooks/useConnectionWorkspace';
 import { useQueryHistory } from './hooks/useQueryHistory';
@@ -40,6 +41,7 @@ export const App: React.FC = () => {
   const [isUserManagerModalOpen, setIsUserManagerModalOpen] = useState(false);
   const [isProcessViewerOpen, setIsProcessViewerOpen] = useState(false);
   const [isServerVariablesOpen, setIsServerVariablesOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   // Workspace persistence
   const { hydrateWorkspace, saveWorkspaceNow, saveWorkspaceDebounced } = useConnectionWorkspace();
@@ -480,6 +482,13 @@ export const App: React.FC = () => {
       const target = e.target as HTMLElement;
       const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 
+      // Command Palette (Ctrl+P / Ctrl+K)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'k')) {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 't')) {
         e.preventDefault();
         handleAddTab();
@@ -617,6 +626,7 @@ export const App: React.FC = () => {
         onOpenUserManagerModal={() => setIsUserManagerModalOpen(true)}
         onOpenProcessViewerModal={() => setIsProcessViewerOpen(true)}
         onOpenServerVariablesModal={() => setIsServerVariablesOpen(true)}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onDisconnect={handleDisconnect}
         onNewQuery={handleAddTab}
       />
@@ -718,6 +728,7 @@ export const App: React.FC = () => {
               swapF9F5={swapF9F5}
               onToggleSwap={handleToggleSwapF9F5}
               schema={schemaObjects}
+              onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             />
           </div>
 
@@ -889,6 +900,39 @@ export const App: React.FC = () => {
           }]);
           setActiveTabId(newId);
         }}
+      />
+
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        isConnected={isConnected}
+        activeConfig={activeConfig}
+        activeDatabase={activeDatabase}
+        databases={schemaObjects?.databases || []}
+        schemaObjects={schemaObjects}
+        onSelectDatabase={handleSelectDatabase}
+        onSelectObjectSql={(sql, executeImmediately) => {
+          handleUpdateActiveSql(sql);
+          if (executeImmediately) {
+            setTimeout(() => handleExecute(false), 50);
+          }
+        }}
+        onNewQuery={handleAddTab}
+        onExecuteActiveQuery={() => handleExecute(false)}
+        onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
+        onDisconnect={handleDisconnect}
+        onOpenCreateDbModal={() => setIsCreateDbModalOpen(true)}
+        onOpenTableDesigner={(tbl) => {
+          setTableDesignerName(tbl || null);
+          setIsTableDesignerOpen(true);
+        }}
+        onOpenDumpModal={() => setIsDumpModalOpen(true)}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
+        onOpenSchemaDiffModal={() => setIsSchemaDiffModalOpen(true)}
+        onOpenUserManagerModal={() => setIsUserManagerModalOpen(true)}
+        onOpenProcessViewerModal={() => setIsProcessViewerOpen(true)}
+        onOpenServerVariablesModal={() => setIsServerVariablesOpen(true)}
+        onClearHistory={handleClearHistory}
       />
 
     </div>

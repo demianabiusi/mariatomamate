@@ -20,6 +20,7 @@ import {
   Users,
   Activity,
   Sliders,
+  Search,
   Wrench
 } from 'lucide-react';
 
@@ -35,6 +36,7 @@ interface NavbarProps {
   onOpenUserManagerModal?: () => void;
   onOpenProcessViewerModal?: () => void;
   onOpenServerVariablesModal?: () => void;
+  onOpenCommandPalette?: () => void;
   onDisconnect: () => void;
   onNewQuery: () => void;
 }
@@ -51,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUserManagerModal,
   onOpenProcessViewerModal,
   onOpenServerVariablesModal,
+  onOpenCommandPalette,
   onDisconnect,
   onNewQuery
 }) => {
@@ -314,6 +317,22 @@ export const Navbar: React.FC<NavbarProps> = ({
             </>
           )}
         </div>
+
+        {/* Command Palette Button */}
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 text-xs rounded border border-zinc-800 hover:border-zinc-700 transition-colors shadow-xs group"
+            title={t('navbar.commandPaletteTooltip')}
+          >
+            <Search className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-105 transition-transform" />
+            <span className="hidden md:inline text-[11px] text-zinc-300 font-medium">{t('navbar.commandPalette')}</span>
+            <kbd className="hidden lg:inline px-1 py-0.2 text-[9px] font-mono bg-zinc-950 border border-zinc-700/80 rounded text-zinc-400">
+              Ctrl+P
+            </kbd>
+          </button>
+        )}
       </div>
 
       {/* Center Status: Connected Server & Active Database */}

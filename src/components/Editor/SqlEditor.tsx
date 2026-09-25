@@ -31,6 +31,7 @@ interface SqlEditorProps {
   swapF9F5: boolean;
   onToggleSwap: () => void;
   schema?: SchemaObjects | null;
+  onOpenCommandPalette?: () => void;
 }
 
 export const SqlEditor: React.FC<SqlEditorProps> = ({
@@ -43,7 +44,8 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   onChangeMaxRows,
   swapF9F5,
   onToggleSwap,
-  schema
+  schema,
+  onOpenCommandPalette
 }) => {
   const { t } = useTranslation();
   const { currentThemeOption } = useTheme();
@@ -89,6 +91,11 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
   useEffect(() => {
     schemaRef.current = schema;
   }, [schema]);
+
+  const onOpenCommandPaletteRef = useRef(onOpenCommandPalette);
+  useEffect(() => {
+    onOpenCommandPaletteRef.current = onOpenCommandPalette;
+  }, [onOpenCommandPalette]);
 
   // Forward-ref to handleFormatSql (defined below) so the Ctrl+Shift+F
   // command registered in handleEditorDidMount never captures a stale closure.
@@ -418,6 +425,14 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
     // Ctrl+Shift+F — Format SQL
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
       handleFormatSqlRef.current();
+    });
+
+    // Ctrl+P / Ctrl+K — Open Command Palette
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+      onOpenCommandPaletteRef.current?.();
+    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+      onOpenCommandPaletteRef.current?.();
     });
   };
 
