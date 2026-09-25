@@ -110,6 +110,7 @@
     "searchPlaceholder": "Filtrar tablas y objetos...",
     "noConnectionTitle": "Sin Conexión",
     "noConnectionDesc": "Conéctate a tu servidor MariaDB / MySQL para explorar bases de datos, tablas, vistas, procedimientos y funciones.",
+    "loadingObjects": "Cargando objetos de la base de datos...",
     "tables": "Tablas",
     "views": "Vistas",
     "procedures": "Procedimientos Almacenados",

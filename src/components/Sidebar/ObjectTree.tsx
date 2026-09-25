@@ -297,9 +297,44 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
 
       {/* Object Tree List */}
       <div className="flex-1 overflow-auto p-2 space-y-1">
-        
-        {/* If no active database / disconnected */}
-        {!currentDb && (
+
+        {/* Loading skeleton — shown while fetching objects after connect / db switch */}
+        {isLoading && !currentDb && (
+          <div className="p-3 space-y-3">
+            {/* Status line */}
+            <div className="flex items-center gap-2 px-1">
+              <div className="w-3.5 h-3.5 border-2 border-emerald-500/40 border-t-emerald-500 rounded-full animate-spin shrink-0" />
+              <span className="text-[11px] text-emerald-400 font-medium animate-pulse">
+                {t('sidebar.loadingObjects')}
+              </span>
+            </div>
+            {/* Skeleton rows */}
+            {[80, 60, 72, 55, 90, 48, 65].map((w, i) => (
+              <div key={i} className="flex items-center gap-2 px-1">
+                <div className="w-3 h-3 rounded bg-zinc-800 animate-pulse shrink-0" />
+                <div
+                  className="h-2.5 rounded bg-zinc-800 animate-pulse"
+                  style={{ width: `${w}%`, animationDelay: `${i * 80}ms` }}
+                />
+              </div>
+            ))}
+            {/* Skeleton section headers */}
+            <div className="pt-2 space-y-2">
+              {[45, 35].map((w, i) => (
+                <div key={i} className="flex items-center gap-2 px-1">
+                  <div className="w-3 h-3 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+                  <div
+                    className="h-2 rounded bg-zinc-800/80 animate-pulse"
+                    style={{ width: `${w}%`, animationDelay: `${(i + 7) * 80}ms` }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* If no active database / disconnected (and not loading) */}
+        {!isLoading && !currentDb && (
           <div className="p-4 text-center text-zinc-500 space-y-2">
             <AlertTriangle className="w-6 h-6 mx-auto text-amber-500/80" />
             <p className="font-semibold text-zinc-300">{t('sidebar.noConnectionTitle')}</p>
