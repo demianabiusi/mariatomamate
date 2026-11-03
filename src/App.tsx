@@ -476,6 +476,26 @@ export const App: React.FC = () => {
     });
   }, [addHistoryEntry, activeDatabase]);
 
+  const handleRowDeleted = useCallback((_deletedRow: Record<string, any>, sql: string) => {
+    addHistoryEntry({
+      sql,
+      durationMs: 1,
+      status: 'success',
+      rowCount: 1,
+      database: activeDatabase || undefined,
+    });
+  }, [addHistoryEntry, activeDatabase]);
+
+  const handleRowInserted = useCallback((_newRow: Record<string, any>, sql: string) => {
+    addHistoryEntry({
+      sql,
+      durationMs: 1,
+      status: 'success',
+      rowCount: 1,
+      database: activeDatabase || undefined,
+    });
+  }, [addHistoryEntry, activeDatabase]);
+
   // Keyboard shortcut listener (Ctrl+N, Ctrl+T, Ctrl+W, F9, F5, Ctrl+Enter)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -756,6 +776,8 @@ export const App: React.FC = () => {
               currentConnectionId={activeConfig?.id}
               currentConnectionName={activeConfig?.name}
               onRowUpdated={handleRowUpdated}
+              onRowDeleted={handleRowDeleted}
+              onRowInserted={handleRowInserted}
             />
           </div>
 

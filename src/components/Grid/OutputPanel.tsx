@@ -27,6 +27,8 @@ interface OutputPanelProps {
   currentConnectionId?: string | null;
   currentConnectionName?: string | null;
   onRowUpdated?: (newRow: Record<string, any>, sql: string) => void;
+  onRowDeleted?: (deletedRow: Record<string, any>, sql: string) => void;
+  onRowInserted?: (newRow: Record<string, any>, sql: string) => void;
 }
 
 export const OutputPanel: React.FC<OutputPanelProps> = ({
@@ -42,7 +44,9 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   onDeleteHistoryItem,
   currentConnectionId,
   currentConnectionName,
-  onRowUpdated
+  onRowUpdated,
+  onRowDeleted,
+  onRowInserted
 }) => {
   const { t } = useTranslation();
 
@@ -120,7 +124,13 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
         
         {/* 1. Data Grid View */}
         {activeTab === 'grid' && (
-          <DataGrid result={result} isRunning={isRunning} onRowUpdated={onRowUpdated} />
+          <DataGrid 
+            result={result} 
+            isRunning={isRunning} 
+            onRowUpdated={onRowUpdated}
+            onRowDeleted={onRowDeleted}
+            onRowInserted={onRowInserted}
+          />
         )}
 
         {/* 2. Messages Console View */}

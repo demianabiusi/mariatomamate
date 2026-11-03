@@ -10,11 +10,12 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "build:ui": "vite build",
     "build": "npm run build:ui && npm run build:electron",
-    "package:win": "npm run build && electron-builder --win portable",
+    "package:win": "npm run build && electron-builder --win nsis portable",
     "package:win:portable": "npm run build && electron-builder --win portable",
     "package:win:nsis": "npm run build && electron-builder --win nsis",
     "package:dir": "npm run build && electron-builder --dir",
     "package:linux": "npm run build && electron-builder --linux AppImage",
+    "package:all": "npm run build && electron-builder --win nsis portable --linux AppImage",
     "start": "electron ."
   },
   "build": {
@@ -36,6 +37,12 @@
       "icon": "public/icon.ico",
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
@@ -48,7 +55,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Maria Toma Mate"
+      "shortcutName": "Maria Toma Mate",
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}"
     },
     "linux": {
       "target": [
@@ -56,6 +67,7 @@
       ],
       "category": "Development",
       "icon": "public/icon.png",
+      "artifactName": "${productName}-${version}.${ext}",
       "desktop": {
         "entry": {
           "StartupWMClass": "maria-toma-mate"

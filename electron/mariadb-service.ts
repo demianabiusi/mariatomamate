@@ -968,6 +968,298 @@ export class MariaDbService {
     });
   }
 
+  public async deleteRow(params: {
+    db?: string;
+    table: string;
+    row: Record<string, any>;
+    fieldsMeta?: {
+      name: string;
+      orgName: string;
+      table: string;
+      orgTable: string;
+      db: string;
+      isPrimary?: boolean;
+    }[];
+  }): Promise<{
+    affectedRows: number;
+    sql: string;
+    primaryKeysUsed: string[];
+    usedStrategy: 'primary_key' | 'full_row_match';
+  }> {
+    return this.executeWithAutoReconnect(async (conn) => {
+      const cleanTable = (params.table || '').replace(/[`'"]/g, '').trim();
+      const targetDb = (params.db || this.currentConfig?.database || '').replace(/[`'"]/g, '').trim();
+
+      if (!cleanTable) {
+        throw new Error('No se pudo identificar la tabla de origen para eliminar la fila.');
+      }
+
+      const escapeId = (id: string) => '`' + id.replace(/`/g, '``') + '`';
+      const tableRef = targetDb ? `${escapeId(targetDb)}.${escapeId(cleanTable)}` : escapeId(cleanTable);
+
+      const findOldValue = (colOrgName: string): { found: boolean; value: any } => {
+        if (params.fieldsMeta && params.fieldsMeta.length > 0) {
+          const match = params.fieldsMeta.find(f =>
+            (f.orgTable === cleanTable || !f.orgTable) &&
+            (f.orgName === colOrgName || f.name === colOrgName)
+          );
+          if (match && match.name in params.row) {
+            return { found: true, value: params.row[match.name] };
+          }
+        }
+        if (colOrgName in params.row) {
+          return { found: true, value: params.row[colOrgName] };
+        }
+        return { found: false, value: undefined };
+      };
+
+      // 1. Check Primary Key of table
+      let primaryKeys: string[] = [];
+      try {
+        const [pkRows] = await conn.query(`SHOW KEYS FROM ${tableRef} WHERE Key_name = 'PRIMARY';`);
+        if (Array.isArray(pkRows)) {
+          for (const r of pkRows) {
+            const pkCol = (r as any).Column_name || (r as any).column_name || (r as any).COLUMN_NAME;
+            if (pkCol && typeof pkCol === 'string') {
+              primaryKeys.push(pkCol);
+            }
+          }
+        }
+      } catch (err) {
+        if (params.fieldsMeta) {
+          primaryKeys = params.fieldsMeta
+            .filter(f => (f.orgTable === cleanTable || !f.orgTable) && f.isPrimary)
+            .map(f => f.orgName || f.name);
+        }
+      }
+
+      const pkMatches: { col: string; value: any }[] = [];
+      let canUsePrimaryKey = primaryKeys.length > 0;
+      if (canUsePrimaryKey) {
+        for (const pk of primaryKeys) {
+          const res = findOldValue(pk);
+          if (!res.found || res.value === undefined) {
+            canUsePrimaryKey = false;
+            break;
+          }
+          pkMatches.push({ col: pk, value: res.value });
+        }
+      }
+
+      // STRATEGY 1: Primary Key Match
+      if (canUsePrimaryKey && pkMatches.length > 0) {
+        const whereClauses: string[] = [];
+        const whereParams: any[] = [];
+        for (const pk of pkMatches) {
+          if (pk.value === null) {
+            whereClauses.push(`${escapeId(pk.col)} IS NULL`);
+          } else {
+            whereClauses.push(`${escapeId(pk.col)} = ?`);
+            whereParams.push(pk.value);
+          }
+        }
+        const whereSql = whereClauses.join(' AND ');
+
+        // Safety verification: Check that row actually exists
+        const [countRows] = await conn.query(
+          `SELECT COUNT(*) AS total_matches FROM ${tableRef} WHERE ${whereSql};`,
+          whereParams
+        );
+        const count = Number((countRows as any[])[0]?.total_matches || 0);
+        if (count === 0) {
+          throw new Error('La fila original no fue encontrada en la base de datos (posiblemente ya fue eliminada o su clave primaria cambió).');
+        }
+
+        const deleteSql = `DELETE FROM ${tableRef} WHERE ${whereSql} LIMIT 1;`;
+        const [deleteRes] = await conn.query(deleteSql, whereParams);
+        const affected = (deleteRes as any)?.affectedRows ?? 1;
+
+        return {
+          affectedRows: affected,
+          sql: deleteSql,
+          primaryKeysUsed: primaryKeys,
+          usedStrategy: 'primary_key'
+        };
+      }
+
+      // STRATEGY 2: Full Row Match
+      const matchColumns: { col: string; value: any }[] = [];
+      if (params.fieldsMeta && params.fieldsMeta.length > 0) {
+        for (const f of params.fieldsMeta) {
+          if ((!f.orgTable || f.orgTable === cleanTable) && f.name in params.row) {
+            const colOrg = f.orgName || f.name;
+            if (!matchColumns.some(m => m.col === colOrg)) {
+              matchColumns.push({ col: colOrg, value: params.row[f.name] });
+            }
+          }
+        }
+      } else {
+        for (const [key, val] of Object.entries(params.row)) {
+          matchColumns.push({ col: key, value: val });
+        }
+      }
+
+      if (matchColumns.length === 0) {
+        throw new Error('No hay columnas suficientes en la fila para identificar el registro a eliminar de forma segura.');
+      }
+
+      const whereClauses: string[] = [];
+      const whereParams: any[] = [];
+      for (const col of matchColumns) {
+        if (col.value === null || col.value === undefined) {
+          whereClauses.push(`${escapeId(col.col)} IS NULL`);
+        } else {
+          whereClauses.push(`${escapeId(col.col)} = ?`);
+          whereParams.push(col.value);
+        }
+      }
+      const whereSql = whereClauses.join(' AND ');
+
+      // SAFETY CHECK: Ensure exactly 1 row matches!
+      const [countRows] = await conn.query(
+        `SELECT COUNT(*) AS total_matches FROM ${tableRef} WHERE ${whereSql};`,
+        whereParams
+      );
+      const totalMatches = Number((countRows as any[])[0]?.total_matches || 0);
+
+      if (totalMatches === 0) {
+        throw new Error('No se encontró ninguna fila que coincida con los valores indicados para eliminar.');
+      }
+
+      if (totalMatches > 1) {
+        throw new Error(
+          `Eliminación bloqueada por seguridad: Se encontraron ${totalMatches} filas idénticas con estos mismos valores porque la consulta no incluye la Clave Primaria (Primary Key). Para evitar borrar otras filas por accidente, incluye la clave primaria en la consulta SQL (ej: SELECT id, ...).`
+        );
+      }
+
+      const deleteSql = `DELETE FROM ${tableRef} WHERE ${whereSql} LIMIT 1;`;
+      const [deleteRes] = await conn.query(deleteSql, whereParams);
+      const affected = (deleteRes as any)?.affectedRows ?? 1;
+
+      return {
+        affectedRows: affected,
+        sql: deleteSql,
+        primaryKeysUsed: [],
+        usedStrategy: 'full_row_match'
+      };
+    });
+  }
+
+  public async insertRow(params: {
+    db?: string;
+    table: string;
+    values: Record<string, any>;
+    fieldsMeta?: {
+      name: string;
+      orgName: string;
+      table: string;
+      orgTable: string;
+      db: string;
+      isPrimary?: boolean;
+    }[];
+  }): Promise<{
+    affectedRows: number;
+    insertId?: number | string;
+    sql: string;
+    insertedRow: Record<string, any>;
+  }> {
+    return this.executeWithAutoReconnect(async (conn) => {
+      const cleanTable = (params.table || '').replace(/[`'"]/g, '').trim();
+      const targetDb = (params.db || this.currentConfig?.database || '').replace(/[`'"]/g, '').trim();
+
+      if (!cleanTable) {
+        throw new Error('No se especificó la tabla en la que se desea insertar la fila.');
+      }
+
+      const escapeId = (id: string) => '`' + id.replace(/`/g, '``') + '`';
+      const tableRef = targetDb ? `${escapeId(targetDb)}.${escapeId(cleanTable)}` : escapeId(cleanTable);
+
+      const cols: string[] = [];
+      const placeholders: string[] = [];
+      const values: any[] = [];
+      const insertedRow: Record<string, any> = {};
+
+      for (const [colName, val] of Object.entries(params.values)) {
+        if (val !== undefined && val !== null && typeof val === 'object' && val.__isDefault) {
+          continue;
+        }
+        if (val === undefined) {
+          continue;
+        }
+
+        const cleanCol = colName.replace(/[`'"]/g, '').trim();
+        cols.push(escapeId(cleanCol));
+        placeholders.push('?');
+        values.push(val);
+        insertedRow[cleanCol] = val;
+      }
+
+      let insertSql: string;
+      if (cols.length === 0) {
+        insertSql = `INSERT INTO ${tableRef} () VALUES ();`;
+      } else {
+        insertSql = `INSERT INTO ${tableRef} (${cols.join(', ')}) VALUES (${placeholders.join(', ')});`;
+      }
+
+      const [insertRes] = await conn.query(insertSql, values);
+      const insertId = (insertRes as any)?.insertId;
+      const affected = (insertRes as any)?.affectedRows ?? 1;
+
+      // Try to re-fetch the complete row if insertId was generated
+      if (insertId && Number(insertId) > 0) {
+        try {
+          let pkCol: string | null = null;
+          const [pkRows] = await conn.query(`SHOW KEYS FROM ${tableRef} WHERE Key_name = 'PRIMARY';`);
+          if (Array.isArray(pkRows) && pkRows.length === 1) {
+            pkCol = (pkRows[0] as any).Column_name || (pkRows[0] as any).column_name || (pkRows[0] as any).COLUMN_NAME;
+          }
+          if (!pkCol && params.fieldsMeta) {
+            const pks = params.fieldsMeta.filter(f => (f.orgTable === cleanTable || !f.orgTable) && f.isPrimary);
+            if (pks.length === 1) {
+              pkCol = pks[0].orgName || pks[0].name;
+            }
+          }
+
+          if (pkCol) {
+            insertedRow[pkCol] = insertId;
+            const [selectedRows] = await conn.query(`SELECT * FROM ${tableRef} WHERE ${escapeId(pkCol)} = ? LIMIT 1;`, [insertId]);
+            if (Array.isArray(selectedRows) && selectedRows.length > 0) {
+              Object.assign(insertedRow, selectedRows[0]);
+            }
+          }
+        } catch {
+          // If query fails, insertedRow already has user values
+        }
+      } else if (Object.keys(insertedRow).length > 0) {
+        // If no insertId, try to fetch via PK if all PK columns were supplied
+        try {
+          let pkCols: string[] = [];
+          const [pkRows] = await conn.query(`SHOW KEYS FROM ${tableRef} WHERE Key_name = 'PRIMARY';`);
+          if (Array.isArray(pkRows) && pkRows.length > 0) {
+            pkCols = (pkRows as any[]).map(r => r.Column_name || r.column_name || r.COLUMN_NAME).filter(Boolean);
+          }
+          if (pkCols.length > 0 && pkCols.every(k => k in insertedRow && insertedRow[k] !== undefined)) {
+            const whereSql = pkCols.map(k => `${escapeId(k)} = ?`).join(' AND ');
+            const whereVals = pkCols.map(k => insertedRow[k]);
+            const [fetched] = await conn.query(`SELECT * FROM ${tableRef} WHERE ${whereSql} LIMIT 1;`, whereVals);
+            if (Array.isArray(fetched) && fetched.length > 0) {
+              Object.assign(insertedRow, fetched[0]);
+            }
+          }
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      return {
+        affectedRows: affected,
+        insertId: insertId || undefined,
+        sql: insertSql,
+        insertedRow
+      };
+    });
+  }
+
   public splitSqlStatements(script: string): string[] {
     const statements: string[] = [];
     let current = '';

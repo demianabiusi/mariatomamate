@@ -405,6 +405,24 @@ ipcMain.handle('db:update-cell', async (_, params: any) => {
   }
 });
 
+ipcMain.handle('db:delete-row', async (_, params: any) => {
+  try {
+    const data = await mariaService.deleteRow(params);
+    return { success: true, data };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al eliminar fila' };
+  }
+});
+
+ipcMain.handle('db:insert-row', async (_, params: any) => {
+  try {
+    const data = await mariaService.insertRow(params);
+    return { success: true, data };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al insertar fila' };
+  }
+});
+
 // IPC: File Dialogs
 ipcMain.handle('dialog:save-sql-file', async (_, content: string, defaultPath?: string) => {
   if (!mainWindow) return false;

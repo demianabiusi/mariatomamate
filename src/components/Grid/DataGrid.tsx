@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { QueryResult } from '../../types';
 import { useTranslation } from '../../i18n/I18nContext';
 import { exportToCsv, exportToJson, exportToSqlInserts, exportToXlsx } from '../../utils/exporter';
+import { InsertRowModal } from '../Modals/InsertRowModal';
 import { 
   Download, 
   Search, 
@@ -20,16 +21,27 @@ import {
   Pencil,
   Key,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Plus,
+  Trash2,
+  CopyPlus
 } from 'lucide-react';
 
 interface DataGridProps {
   result: QueryResult | null;
   isRunning: boolean;
   onRowUpdated?: (newRow: Record<string, any>, sql: string) => void;
+  onRowDeleted?: (deletedRow: Record<string, any>, sql: string) => void;
+  onRowInserted?: (newRow: Record<string, any>, sql: string) => void;
 }
 
-export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpdated }) => {
+export const DataGrid: React.FC<DataGridProps> = ({ 
+  result, 
+  isRunning, 
+  onRowUpdated,
+  onRowDeleted,
+  onRowInserted
+}) => {
   const { t } = useTranslation();
   const [filterText, setFilterText] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -54,12 +66,50 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [mutationEpoch, setMutationEpoch] = useState(0);
 
+  // Insert row modal state
+  const [isInsertModalOpen, setIsInsertModalOpen] = useState(false);
+  const [duplicateRowValues, setDuplicateRowValues] = useState<Record<string, any> | null>(null);
+
+  // Delete row state
+  const [rowToDelete, setRowToDelete] = useState<{ row: Record<string, any>; index: number } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Row context menu state
+  const [rowContextMenu, setRowContextMenu] = useState<{
+    x: number;
+    y: number;
+    row: Record<string, any>;
+    index: number;
+  } | null>(null);
+
+  // Close context menu on outside click or escape
+  useEffect(() => {
+    const handleClose = () => setRowContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRowContextMenu(null);
+    };
+
+    if (rowContextMenu) {
+      window.addEventListener('click', handleClose);
+      window.addEventListener('contextmenu', handleClose);
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('contextmenu', handleClose);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [rowContextMenu]);
+
   React.useEffect(() => {
     setCurrentPage(1);
     setFilterText('');
     setEditingCell(null);
     setFlashCell(null);
     setSafetyError(null);
+    setRowToDelete(null);
+    setRowContextMenu(null);
+    setIsInsertModalOpen(false);
   }, [result]);
 
   const hasEditableTable = useMemo(() => {
@@ -68,6 +118,20 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
 
   const hasPrimaryKey = useMemo(() => {
     return Boolean(result?.fieldsMeta?.some(f => Boolean(f.isPrimary)));
+  }, [result?.fieldsMeta]);
+
+  // Target primary table metadata for insert/delete
+  const targetTableInfo = useMemo(() => {
+    if (!result?.fieldsMeta) return null;
+    const orgTables = Array.from(new Set(result.fieldsMeta.map(f => f.orgTable).filter(Boolean)));
+    if (orgTables.length === 0) return null;
+    const primaryTable = orgTables[0];
+    const db = result.fieldsMeta.find(f => f.orgTable === primaryTable)?.db;
+    return {
+      table: primaryTable,
+      db,
+      isSingleTable: orgTables.length === 1
+    };
   }, [result?.fieldsMeta]);
 
   const handleStartEdit = (row: Record<string, any>, col: string) => {
@@ -146,6 +210,120 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
       setEditingCell(prev => prev ? { ...prev, isSaving: false } : null);
       setSafetyError(err.message || 'Error inesperado al intentar modificar el valor.');
     }
+  };
+
+  const handleOpenInsertModal = (initialVals?: Record<string, any>) => {
+    setDuplicateRowValues(initialVals || null);
+    setIsInsertModalOpen(true);
+  };
+
+  const handleRowInserted = (newRow: Record<string, any>, sql: string, keepOpen?: boolean) => {
+    if (!result) return;
+
+    // Map inserted row fields to grid columns (accounting for possible column aliases in fieldsMeta)
+    const mappedRow: Record<string, any> = {};
+    for (const col of result.columns) {
+      const meta = result.fieldsMeta?.find(f => f.name === col);
+      const orgName = meta?.orgName || col;
+      if (orgName in newRow) {
+        mappedRow[col] = newRow[orgName];
+      } else if (col in newRow) {
+        mappedRow[col] = newRow[col];
+      } else {
+        mappedRow[col] = null;
+      }
+    }
+
+    // Insert at top of the dataset
+    result.rows.unshift(mappedRow);
+    result.rowCount = (result.rowCount || 0) + 1;
+    setMutationEpoch(v => v + 1);
+
+    setFlashCell({ row: mappedRow, col: result.columns[0] });
+    setTimeout(() => setFlashCell(null), 1800);
+
+    setSuccessToast(t('grid.insertRowSuccess') || 'Fila insertada correctamente');
+    setTimeout(() => setSuccessToast(null), 3000);
+
+    if (onRowInserted) {
+      onRowInserted(mappedRow, sql);
+    }
+  };
+
+  const handleDeleteRowClick = (row: Record<string, any>, index: number) => {
+    setRowContextMenu(null);
+    setRowToDelete({ row, index });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!rowToDelete || !targetTableInfo || !result) return;
+    setIsDeleting(true);
+
+    try {
+      const res = await window.electronAPI.deleteRow({
+        db: targetTableInfo.db,
+        table: targetTableInfo.table,
+        row: rowToDelete.row,
+        fieldsMeta: result.fieldsMeta
+      });
+
+      if (res.success && res.data) {
+        const idx = result.rows.indexOf(rowToDelete.row);
+        if (idx !== -1) {
+          result.rows.splice(idx, 1);
+          result.rowCount = Math.max(0, (result.rowCount || 1) - 1);
+          setMutationEpoch(v => v + 1);
+        }
+
+        setSuccessToast(
+          res.data.usedStrategy === 'primary_key'
+            ? (t('grid.deleteRowSuccessPk') || 'Fila eliminada con éxito (usando Clave Primaria).')
+            : (t('grid.deleteRowSuccessVerified') || 'Fila eliminada con éxito (unicidad verificada).')
+        );
+        setTimeout(() => setSuccessToast(null), 3000);
+
+        if (onRowDeleted) {
+          onRowDeleted(rowToDelete.row, res.data.sql);
+        }
+
+        setRowToDelete(null);
+      } else {
+        setSafetyError(res.error || 'Error al eliminar la fila en la tabla.');
+        setRowToDelete(null);
+      }
+    } catch (err: any) {
+      setSafetyError(err.message || 'Error inesperado al intentar eliminar la fila.');
+      setRowToDelete(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRowContextMenu = (e: React.MouseEvent, row: Record<string, any>, index: number) => {
+    e.preventDefault();
+    setRowContextMenu({
+      x: Math.min(e.clientX, window.innerWidth - 220),
+      y: Math.min(e.clientY, window.innerHeight - 200),
+      row,
+      index
+    });
+  };
+
+  const handleCopyRowJson = (row: Record<string, any>) => {
+    navigator.clipboard.writeText(JSON.stringify(row, null, 2));
+    setSuccessToast(t('common.copied') || 'Copiado al portapapeles');
+    setTimeout(() => setSuccessToast(null), 2000);
+    setRowContextMenu(null);
+  };
+
+  const handleCopyRowSql = (row: Record<string, any>) => {
+    if (!result) return;
+    const tbl = targetTableInfo?.table || 'tabla';
+    const sql = exportToSqlInserts(tbl, result.columns, [row]);
+    navigator.clipboard.writeText(sql);
+    setSuccessToast(t('common.copied') || 'Copiado al portapapeles');
+    setTimeout(() => setSuccessToast(null), 2000);
+    setRowContextMenu(null);
   };
 
   const handleSort = (col: string) => {
@@ -308,6 +486,19 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
             </div>
           ) : null}
 
+          {/* Insert Row Action Button */}
+          {hasEditableTable && targetTableInfo && (
+            <button
+              type="button"
+              onClick={() => handleOpenInsertModal()}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow-xs transition-colors shrink-0 ml-1"
+              title={t('grid.insertRowTitle') || 'Insertar nueva fila'}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{t('grid.insertRow') || 'Insertar fila'}</span>
+            </button>
+          )}
+
           {/* Success notification */}
           {successToast && (
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded text-[11px] animate-in fade-in">
@@ -421,9 +612,30 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
             {paginatedRows.map((row, idx) => {
               const rowIndex = (currentPage - 1) * pageSize + idx + 1;
               return (
-                <tr key={idx} className="hover:bg-zinc-900/60 transition-colors">
-                  <td className="w-10 px-2 py-1 text-center text-zinc-500 border-r border-zinc-900 bg-zinc-950/40 select-none">
-                    {rowIndex}
+                <tr 
+                  key={idx} 
+                  onContextMenu={(e) => handleRowContextMenu(e, row, rowIndex)}
+                  className="hover:bg-zinc-900/60 transition-colors group/row"
+                >
+                  <td className="w-10 px-2 py-1 text-center text-zinc-500 border-r border-zinc-900 bg-zinc-950/40 select-none relative group/rowno">
+                    {hasEditableTable ? (
+                      <>
+                        <span className="group-hover/rowno:hidden">{rowIndex}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteRowClick(row, rowIndex);
+                          }}
+                          className="hidden group-hover/rowno:inline-flex items-center justify-center text-zinc-400 hover:text-red-400 transition-colors"
+                          title={t('grid.deleteRow') || 'Eliminar fila'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      rowIndex
+                    )}
                   </td>
                   {result.columns.map((col) => {
                     const rawVal = row[col];
@@ -550,6 +762,30 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
                             >
                               <Pencil className="w-3 h-3" />
                             </button>
+                          )}
+                          {hasEditableTable && (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenInsertModal(row);
+                                }}
+                                className="p-1 hover:text-blue-400 text-zinc-400 rounded transition-colors"
+                                title={t('grid.duplicateRow') || 'Duplicar fila'}
+                              >
+                                <CopyPlus className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteRowClick(row, rowIndex);
+                                }}
+                                className="p-1 hover:text-red-400 text-zinc-400 rounded transition-colors"
+                                title={t('grid.deleteRow') || 'Eliminar fila'}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </>
                           )}
                           <button
                             onClick={(e) => {
@@ -702,6 +938,155 @@ export const DataGrid: React.FC<DataGridProps> = ({ result, isRunning, onRowUpda
                 {t('common.close')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Insert / Duplicate Row Modal */}
+      {hasEditableTable && targetTableInfo && (
+        <InsertRowModal
+          isOpen={isInsertModalOpen}
+          onClose={() => {
+            setIsInsertModalOpen(false);
+            setDuplicateRowValues(null);
+          }}
+          tableName={targetTableInfo.table}
+          database={targetTableInfo.db}
+          columns={result.columns}
+          fieldsMeta={result.fieldsMeta}
+          initialValues={duplicateRowValues}
+          onSuccess={handleRowInserted}
+        />
+      )}
+
+      {/* Delete Row Confirmation Dialog */}
+      {rowToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 select-none animate-in fade-in duration-150">
+          <div className="bg-zinc-900 border border-red-500/50 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-zinc-200">
+            <div className="flex items-center justify-between px-4 py-3 bg-red-500/10 border-b border-red-500/20 text-red-400">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5 shrink-0" />
+                <h3 className="font-semibold text-xs tracking-wide uppercase">
+                  {t('grid.deleteRowConfirmTitle') || '¿Eliminar fila?'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRowToDelete(null)}
+                disabled={isDeleting}
+                className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-xs leading-relaxed text-zinc-300">
+              <p>
+                {t('grid.deleteRowConfirmDesc') || 'Esta acción ejecutará una sentencia DELETE permanente en la base de datos.'}
+              </p>
+              <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 space-y-1 font-mono text-[11px]">
+                <div className="text-zinc-500 font-sans">
+                  Fila: <span className="text-zinc-300 font-semibold">#{rowToDelete.index}</span>
+                  {targetTableInfo && (
+                    <span className="ml-2 text-emerald-400 font-mono">
+                      ({targetTableInfo.db ? `${targetTableInfo.db}.${targetTableInfo.table}` : targetTableInfo.table})
+                    </span>
+                  )}
+                </div>
+                <div className="text-zinc-400 max-h-32 overflow-y-auto pt-1 space-y-0.5">
+                  {result.columns.slice(0, 5).map(c => (
+                    <div key={c} className="truncate">
+                      <span className="text-zinc-500">{c}:</span>{' '}
+                      <span className="text-zinc-200">{String(rowToDelete.row[c] ?? 'NULL')}</span>
+                    </div>
+                  ))}
+                  {result.columns.length > 5 && (
+                    <div className="text-zinc-600 italic">... y {result.columns.length - 5} columnas más</div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-3 bg-zinc-950 border-t border-zinc-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRowToDelete(null)}
+                disabled={isDeleting}
+                className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 rounded-lg text-xs font-medium transition-colors"
+              >
+                {t('common.cancel') || 'Cancelar'}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{t('grid.deleteRow') || 'Eliminar fila'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Row Context Menu */}
+      {rowContextMenu && (
+        <div 
+          style={{ top: rowContextMenu.y, left: rowContextMenu.x }}
+          className="fixed z-50 w-52 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-1 divide-y divide-zinc-800 text-xs text-zinc-200 animate-in fade-in zoom-in-95 duration-100 select-none"
+        >
+          <div className="px-3 py-1.5 text-[11px] font-bold text-zinc-400 font-mono truncate border-b border-zinc-800 flex items-center justify-between">
+            <span>Fila #{rowContextMenu.index}</span>
+            {targetTableInfo && (
+              <span className="text-[10px] text-emerald-400 font-normal">{targetTableInfo.table}</span>
+            )}
+          </div>
+          {hasEditableTable && (
+            <div className="py-1">
+              <button
+                onClick={() => {
+                  handleOpenInsertModal(rowContextMenu.row);
+                  setRowContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left text-zinc-200 hover:text-white transition-colors"
+              >
+                <CopyPlus className="w-3.5 h-3.5 text-blue-400" />
+                <span>{t('grid.duplicateRow') || 'Duplicar fila'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  handleDeleteRowClick(rowContextMenu.row, rowContextMenu.index);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-red-950/50 text-left text-red-400 hover:text-red-300 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <span>{t('grid.deleteRow') || 'Eliminar fila'}</span>
+              </button>
+            </div>
+          )}
+          <div className="py-1">
+            <button
+              onClick={() => handleCopyRowJson(rowContextMenu.row)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left text-zinc-300 hover:text-white transition-colors"
+            >
+              <FileJson className="w-3.5 h-3.5 text-amber-400" />
+              <span>{t('grid.copyRowJson') || 'Copiar fila como JSON'}</span>
+            </button>
+            <button
+              onClick={() => handleCopyRowSql(rowContextMenu.row)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left text-zinc-300 hover:text-white transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{t('grid.copyRowSql') || 'Copiar como INSERT'}</span>
+            </button>
           </div>
         </div>
       )}
