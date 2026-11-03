@@ -204,7 +204,14 @@
     "dropEvent": "Drop (DROP EVENT)",
     "dropTable": "Drop Table (DROP TABLE)",
     "createDatabase": "Create New Database...",
-    "dropDatabase": "Drop Database..."
+    "dropDatabase": "Drop Database...",
+    "expandColumns": "Expand columns",
+    "collapseColumns": "Collapse columns",
+    "copyColumnName": "Copy column name",
+    "copyColumnBackticks": "Copy with backticks",
+    "queryColumn": "Query column (SELECT)",
+    "columnCopied": "Column name copied",
+    "columnsCount": "columns"
   },
   "editor": {
     "queryTab": "Query",

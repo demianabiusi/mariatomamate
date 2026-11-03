@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from '../../i18n/I18nContext';
-import { SchemaObjects } from '../../types';
+import { SchemaObjects, SchemaColumnDetail } from '../../types';
 import { 
   Table as TableIcon, 
   Eye, 
@@ -27,7 +27,9 @@ import {
   FolderPlus,
   GitCompare,
   Users,
-  Activity
+  Activity,
+  Key,
+  Columns
 } from 'lucide-react';
 
 interface ObjectTreeProps {
@@ -57,6 +59,7 @@ type ContextMenuItemType =
   | 'TABLE_SECTION' 
   | 'VIEW' 
   | 'VIEW_SECTION' 
+  | 'COLUMN'
   | 'PROCEDURE' 
   | 'PROCEDURE_SECTION' 
   | 'FUNCTION'
@@ -108,6 +111,12 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
     events: true
   });
 
+  // Table and View column expansion states
+  const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
+  const [expandedViews, setExpandedViews] = useState<Record<string, boolean>>({});
+  const [lazyLoadedColumns, setLazyLoadedColumns] = useState<Record<string, SchemaColumnDetail[]>>({});
+  const [loadingColumns, setLoadingColumns] = useState<Record<string, boolean>>({});
+
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
@@ -158,20 +167,142 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
     setTimeout(() => setCopiedNotification(null), 1500);
   };
 
+  const getColumnsForTable = (tableName: string): SchemaColumnDetail[] => {
+    if (objects?.columnsDetailsByTable?.[tableName]) {
+      return objects.columnsDetailsByTable[tableName];
+    }
+    if (lazyLoadedColumns[tableName]) {
+      return lazyLoadedColumns[tableName];
+    }
+    if (objects?.columnsByTable?.[tableName]) {
+      return objects.columnsByTable[tableName].map(name => ({
+        name,
+        type: 'campo',
+        dataType: 'campo',
+        isPrimary: false,
+        isNullable: true,
+        isAutoIncrement: false
+      }));
+    }
+    return [];
+  };
+
+  const toggleTableExpand = async (tbl: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const willExpand = !expandedTables[tbl];
+    setExpandedTables(prev => ({ ...prev, [tbl]: willExpand }));
+
+    if (willExpand && !objects?.columnsDetailsByTable?.[tbl] && !lazyLoadedColumns[tbl]) {
+      setLoadingColumns(prev => ({ ...prev, [tbl]: true }));
+      try {
+        if (window.electronAPI?.getTableDetails) {
+          const res = await window.electronAPI.getTableDetails(tbl);
+          if (res.success && res.data?.columns) {
+            const mapped: SchemaColumnDetail[] = res.data.columns.map(c => ({
+              name: c.columnName,
+              type: c.fieldType.toLowerCase(),
+              dataType: c.fieldType.split('(')[0].toLowerCase(),
+              isPrimary: c.isPrimaryKey,
+              isNullable: c.isNullable,
+              isAutoIncrement: c.isAutoIncrement,
+              comment: c.comment
+            }));
+            setLazyLoadedColumns(prev => ({ ...prev, [tbl]: mapped }));
+          }
+        }
+      } catch {
+        // Fallback
+      } finally {
+        setLoadingColumns(prev => ({ ...prev, [tbl]: false }));
+      }
+    }
+  };
+
+  const toggleViewExpand = async (vw: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const willExpand = !expandedViews[vw];
+    setExpandedViews(prev => ({ ...prev, [vw]: willExpand }));
+
+    if (willExpand && !objects?.columnsDetailsByTable?.[vw] && !lazyLoadedColumns[vw]) {
+      setLoadingColumns(prev => ({ ...prev, [vw]: true }));
+      try {
+        if (window.electronAPI?.getTableDetails) {
+          const res = await window.electronAPI.getTableDetails(vw);
+          if (res.success && res.data?.columns) {
+            const mapped: SchemaColumnDetail[] = res.data.columns.map(c => ({
+              name: c.columnName,
+              type: c.fieldType.toLowerCase(),
+              dataType: c.fieldType.split('(')[0].toLowerCase(),
+              isPrimary: c.isPrimaryKey,
+              isNullable: c.isNullable,
+              isAutoIncrement: c.isAutoIncrement,
+              comment: c.comment
+            }));
+            setLazyLoadedColumns(prev => ({ ...prev, [vw]: mapped }));
+          }
+        }
+      } catch {
+        // Fallback
+      } finally {
+        setLoadingColumns(prev => ({ ...prev, [vw]: false }));
+      }
+    }
+  };
+
   // Filter objects by search text
   const filterText = searchFilter.toLowerCase().trim();
+
+  const isTableExpanded = (tbl: string) => {
+    if (expandedTables[tbl]) return true;
+    if (filterText) {
+      const cols = getColumnsForTable(tbl);
+      return cols.some(c => c.name.toLowerCase().includes(filterText) || c.type.toLowerCase().includes(filterText));
+    }
+    return false;
+  };
+
+  const isViewExpanded = (vw: string) => {
+    if (expandedViews[vw]) return true;
+    if (filterText) {
+      const cols = getColumnsForTable(vw);
+      return cols.some(c => c.name.toLowerCase().includes(filterText) || c.type.toLowerCase().includes(filterText));
+    }
+    return false;
+  };
 
   const filteredTables = useMemo(() => {
     if (!objects?.tables) return [];
     if (!filterText) return objects.tables;
-    return objects.tables.filter(t => t.toLowerCase().includes(filterText));
-  }, [objects?.tables, filterText]);
+    return objects.tables.filter(t => {
+      if (t.toLowerCase().includes(filterText)) return true;
+      const cols = objects.columnsDetailsByTable?.[t] || lazyLoadedColumns[t] || [];
+      if (cols.some(c => c.name.toLowerCase().includes(filterText) || c.type.toLowerCase().includes(filterText))) {
+        return true;
+      }
+      const rawCols = objects.columnsByTable?.[t] || [];
+      return rawCols.some(c => c.toLowerCase().includes(filterText));
+    });
+  }, [objects?.tables, objects?.columnsDetailsByTable, objects?.columnsByTable, lazyLoadedColumns, filterText]);
 
   const filteredViews = useMemo(() => {
     if (!objects?.views) return [];
     if (!filterText) return objects.views;
-    return objects.views.filter(v => v.toLowerCase().includes(filterText));
-  }, [objects?.views, filterText]);
+    return objects.views.filter(v => {
+      if (v.toLowerCase().includes(filterText)) return true;
+      const cols = objects.columnsDetailsByTable?.[v] || lazyLoadedColumns[v] || [];
+      if (cols.some(c => c.name.toLowerCase().includes(filterText) || c.type.toLowerCase().includes(filterText))) {
+        return true;
+      }
+      const rawCols = objects.columnsByTable?.[v] || [];
+      return rawCols.some(c => c.toLowerCase().includes(filterText));
+    });
+  }, [objects?.views, objects?.columnsDetailsByTable, objects?.columnsByTable, lazyLoadedColumns, filterText]);
 
   const filteredProcedures = useMemo(() => {
     if (!objects?.procedures) return [];
@@ -383,39 +514,132 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
 
               {!collapsedSections.tables && (
                 <div className="ml-4 pl-1 border-l border-zinc-800/80 space-y-0.5 mt-0.5">
-                  {filteredTables.map((tbl) => (
-                    <div
-                      key={tbl}
-                      onClick={() => onSelectObjectSql(`SELECT * FROM \`${tbl}\` LIMIT 100;`, true)}
-                      onContextMenu={(e) => openContextMenu(e, 'TABLE', tbl)}
-                      className="flex items-center justify-between px-2 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
-                      title={`Clic para consultar primeros 100 de \`${tbl}\`\nClic derecho para más opciones`}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <TableIcon className="w-3 h-3 text-zinc-500 group-hover:text-emerald-400 shrink-0" />
-                        <span className="truncate">{tbl}</span>
-                      </div>
+                  {filteredTables.map((tbl) => {
+                    const isExpanded = isTableExpanded(tbl);
+                    const cols = getColumnsForTable(tbl);
+                    const isLoadingCols = Boolean(loadingColumns[tbl]);
 
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onShowTableDetails(tbl); }}
-                          className="p-0.5 hover:text-emerald-400 text-zinc-500 rounded"
-                          title={t('sidebar.viewDetailsIndices')}
+                    return (
+                      <div key={tbl} className="space-y-0.5">
+                        <div
+                          onClick={() => onSelectObjectSql(`SELECT * FROM \`${tbl}\` LIMIT 100;`, true)}
+                          onContextMenu={(e) => openContextMenu(e, 'TABLE', tbl)}
+                          className="flex items-center justify-between px-1.5 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
+                          title={`Clic para consultar primeros 100 de \`${tbl}\`\nClic derecho para más opciones`}
                         >
-                          <Info className="w-3 h-3" />
-                        </button>
-                        {onDesignTable && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onDesignTable(tbl); }}
-                            className="p-0.5 hover:text-amber-400 text-zinc-500 rounded"
-                            title={t('sidebar.designModifyTable')}
-                          >
-                            <Sliders className="w-3 h-3" />
-                          </button>
+                          <div className="flex items-center gap-1 min-w-0 truncate">
+                            <button
+                              type="button"
+                              onClick={(e) => toggleTableExpand(tbl, e)}
+                              className="p-0.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors shrink-0"
+                              title={isExpanded ? (t('sidebar.collapseColumns') || 'Plegar campos') : (t('sidebar.expandColumns') || 'Desplegar campos')}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-3 h-3 text-zinc-400" />
+                              ) : (
+                                <ChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />
+                              )}
+                            </button>
+                            <TableIcon className="w-3.5 h-3.5 text-zinc-500 group-hover:text-emerald-400 shrink-0" />
+                            <span className="truncate font-medium text-xs">{tbl}</span>
+                            {cols.length > 0 && !isExpanded && (
+                              <span className="text-[10px] text-zinc-600 font-mono hidden group-hover:inline shrink-0">
+                                ({cols.length})
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onShowTableDetails(tbl); }}
+                              className="p-0.5 hover:text-emerald-400 text-zinc-500 rounded"
+                              title={t('sidebar.viewDetailsIndices')}
+                            >
+                              <Info className="w-3 h-3" />
+                            </button>
+                            {onDesignTable && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onDesignTable(tbl); }}
+                                className="p-0.5 hover:text-amber-400 text-zinc-500 rounded"
+                                title={t('sidebar.designModifyTable')}
+                              >
+                                <Sliders className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Expanded Columns List */}
+                        {isExpanded && (
+                          <div className="ml-4 pl-2 border-l border-zinc-800/80 py-0.5 space-y-0.5 animate-in fade-in duration-100">
+                            {isLoadingCols ? (
+                              <div className="px-2 py-1 text-[11px] text-zinc-500 flex items-center gap-1.5">
+                                <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" />
+                                <span>Cargando campos...</span>
+                              </div>
+                            ) : cols.length > 0 ? (
+                              cols.map((col) => {
+                                const isHighlighted = filterText && (col.name.toLowerCase().includes(filterText) || col.type.toLowerCase().includes(filterText));
+                                return (
+                                  <div
+                                    key={col.name}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyName(col.name);
+                                    }}
+                                    onContextMenu={(e) => openContextMenu(e, 'COLUMN', col.name, { tableName: tbl, ...col })}
+                                    className={`flex items-center justify-between px-1.5 py-0.5 rounded text-[11px] cursor-pointer group/col transition-colors ${
+                                      isHighlighted 
+                                        ? 'bg-emerald-950/40 text-emerald-300 font-semibold' 
+                                        : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'
+                                    }`}
+                                    title={`${col.name} (${col.type})${col.isPrimary ? ' - Clave Primaria' : ''}${col.isAutoIncrement ? ' - AUTO_INCREMENT' : ''}${!col.isNullable ? ' - NOT NULL' : ''}\nClic para copiar nombre`}
+                                  >
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      {col.isPrimary ? (
+                                        <Key className="w-3 h-3 text-amber-400 shrink-0" title="Clave Primaria (PK)" />
+                                      ) : (
+                                        <Columns className="w-2.5 h-2.5 text-zinc-600 group-hover/col:text-emerald-400 shrink-0" />
+                                      )}
+                                      <span className={`truncate font-mono ${col.isPrimary ? 'text-amber-300 font-semibold' : ''}`}>
+                                        {col.name}
+                                      </span>
+                                      {col.isAutoIncrement && (
+                                        <span className="text-[9px] px-1 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-sans">
+                                          AI
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1 shrink-0 ml-1.5">
+                                      <span className="text-[10px] text-zinc-500 group-hover/col:text-zinc-400 font-mono">
+                                        {col.type}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopyName(col.name);
+                                        }}
+                                        className="opacity-0 group-hover/col:opacity-100 p-0.5 text-zinc-500 hover:text-emerald-400 rounded transition-opacity"
+                                        title={t('sidebar.copyColumnName') || 'Copiar nombre de campo'}
+                                      >
+                                        <Copy className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="px-2 py-0.5 text-[11px] text-zinc-600 italic">
+                                Sin campos detectados
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {filteredTables.length === 0 && (
                     <div className="px-2 py-1 text-zinc-600 italic text-[11px]">No hay tablas</div>
                   )}
@@ -451,28 +675,115 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
 
               {!collapsedSections.views && (
                 <div className="ml-4 pl-1 border-l border-zinc-800/80 space-y-0.5 mt-0.5">
-                  {filteredViews.map((vw) => (
-                    <div
-                      key={vw}
-                      onClick={() => onSelectObjectSql(`SELECT * FROM \`${vw}\` LIMIT 100;`, true)}
-                      onDoubleClick={() => onEditObject('VIEW', vw)}
-                      onContextMenu={(e) => openContextMenu(e, 'VIEW', vw)}
-                      className="flex items-center justify-between px-2 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
-                      title={`Clic: Consultar primeros 100 de \`${vw}\`\nDoble clic: Ver / Editar DDL\nClic derecho: Opciones`}
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <Eye className="w-3 h-3 text-zinc-500 group-hover:text-blue-400 shrink-0" />
-                        <span className="truncate">{vw}</span>
+                  {filteredViews.map((vw) => {
+                    const isExpanded = isViewExpanded(vw);
+                    const cols = getColumnsForTable(vw);
+                    const isLoadingCols = Boolean(loadingColumns[vw]);
+
+                    return (
+                      <div key={vw} className="space-y-0.5">
+                        <div
+                          onClick={() => onSelectObjectSql(`SELECT * FROM \`${vw}\` LIMIT 100;`, true)}
+                          onDoubleClick={() => onEditObject('VIEW', vw)}
+                          onContextMenu={(e) => openContextMenu(e, 'VIEW', vw)}
+                          className="flex items-center justify-between px-1.5 py-1 rounded text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/80 cursor-pointer group transition-colors"
+                          title={`Clic: Consultar primeros 100 de \`${vw}\`\nDoble clic: Ver / Editar DDL\nClic derecho: Opciones`}
+                        >
+                          <div className="flex items-center gap-1 min-w-0 truncate">
+                            <button
+                              type="button"
+                              onClick={(e) => toggleViewExpand(vw, e)}
+                              className="p-0.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors shrink-0"
+                              title={isExpanded ? (t('sidebar.collapseColumns') || 'Plegar campos') : (t('sidebar.expandColumns') || 'Desplegar campos')}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-3 h-3 text-zinc-400" />
+                              ) : (
+                                <ChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />
+                              )}
+                            </button>
+                            <Eye className="w-3.5 h-3.5 text-zinc-500 group-hover:text-blue-400 shrink-0" />
+                            <span className="truncate font-medium text-xs">{vw}</span>
+                            {cols.length > 0 && !isExpanded && (
+                              <span className="text-[10px] text-zinc-600 font-mono hidden group-hover:inline shrink-0">
+                                ({cols.length})
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onEditObject('VIEW', vw); }}
+                              className="p-0.5 hover:text-blue-400 text-zinc-500 rounded"
+                              title={t('sidebar.editViewDdl')}
+                            >
+                              <Code className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Expanded Columns List for View */}
+                        {isExpanded && (
+                          <div className="ml-4 pl-2 border-l border-zinc-800/80 py-0.5 space-y-0.5 animate-in fade-in duration-100">
+                            {isLoadingCols ? (
+                              <div className="px-2 py-1 text-[11px] text-zinc-500 flex items-center gap-1.5">
+                                <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />
+                                <span>Cargando campos...</span>
+                              </div>
+                            ) : cols.length > 0 ? (
+                              cols.map((col) => {
+                                const isHighlighted = filterText && (col.name.toLowerCase().includes(filterText) || col.type.toLowerCase().includes(filterText));
+                                return (
+                                  <div
+                                    key={col.name}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyName(col.name);
+                                    }}
+                                    onContextMenu={(e) => openContextMenu(e, 'COLUMN', col.name, { tableName: vw, ...col })}
+                                    className={`flex items-center justify-between px-1.5 py-0.5 rounded text-[11px] cursor-pointer group/col transition-colors ${
+                                      isHighlighted 
+                                        ? 'bg-blue-950/40 text-blue-300 font-semibold' 
+                                        : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'
+                                    }`}
+                                    title={`${col.name} (${col.type})\nClic para copiar nombre`}
+                                  >
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <Columns className="w-2.5 h-2.5 text-zinc-600 group-hover/col:text-blue-400 shrink-0" />
+                                      <span className="truncate font-mono">
+                                        {col.name}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1 shrink-0 ml-1.5">
+                                      <span className="text-[10px] text-zinc-500 group-hover/col:text-zinc-400 font-mono">
+                                        {col.type}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopyName(col.name);
+                                        }}
+                                        className="opacity-0 group-hover/col:opacity-100 p-0.5 text-zinc-500 hover:text-blue-400 rounded transition-opacity"
+                                        title={t('sidebar.copyColumnName') || 'Copiar nombre de campo'}
+                                      >
+                                        <Copy className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="px-2 py-0.5 text-[11px] text-zinc-600 italic">
+                                Sin campos detectados
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onEditObject('VIEW', vw); }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-blue-400 text-zinc-500 rounded"
-                        title={t('sidebar.editViewDdl')}
-                      >
-                        <Code className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {filteredViews.length === 0 && (
                     <div className="px-2 py-1 text-zinc-600 italic text-[11px]">No hay vistas</div>
                   )}
@@ -766,6 +1077,16 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                   <Info className="w-3.5 h-3.5 text-blue-400" />
                   <span>{t('sidebar.viewDetailsIndices')}</span>
                 </button>
+                <button
+                  onClick={() => {
+                    toggleTableExpand(contextMenu.name);
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left transition-colors"
+                >
+                  <Columns className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>{isTableExpanded(contextMenu.name) ? (t('sidebar.collapseColumns') || 'Plegar campos') : (t('sidebar.expandColumns') || 'Desplegar campos')}</span>
+                </button>
                 {onDesignTable && (
                   <button
                     onClick={() => {
@@ -872,6 +1193,16 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                   <span>{t('sidebar.editViewDdl')}</span>
                 </button>
                 <button
+                  onClick={() => {
+                    toggleViewExpand(contextMenu.name);
+                    setContextMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left transition-colors"
+                >
+                  <Columns className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>{isViewExpanded(contextMenu.name) ? (t('sidebar.collapseColumns') || 'Plegar campos') : (t('sidebar.expandColumns') || 'Desplegar campos')}</span>
+                </button>
+                <button
                   onClick={() => handleCopyName(contextMenu.name)}
                   className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left transition-colors"
                 >
@@ -890,6 +1221,57 @@ export const ObjectTree: React.FC<ObjectTreeProps> = ({
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>{t('sidebar.dropView')}</span>
                 </button>
+              </div>
+            </>
+          )}
+
+          {/* COLUMN CONTEXT MENU */}
+          {contextMenu.itemType === 'COLUMN' && (
+            <>
+              <div className="px-3 py-1.5 border-b border-zinc-800">
+                <div className="text-[11px] font-bold text-amber-400 font-mono truncate flex items-center gap-1.5">
+                  <Columns className="w-3 h-3 text-zinc-400 shrink-0" />
+                  <span>{contextMenu.name}</span>
+                </div>
+                {contextMenu.meta?.type && (
+                  <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                    {contextMenu.meta.type}
+                    {contextMenu.meta.isPrimary && ' • PK'}
+                    {contextMenu.meta.isAutoIncrement && ' • AI'}
+                    {!contextMenu.meta.isNullable && ' • NOT NULL'}
+                  </div>
+                )}
+              </div>
+              <div className="py-1">
+                <button
+                  onClick={() => handleCopyName(contextMenu.name)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>{t('sidebar.copyColumnName') || 'Copiar nombre de campo'}</span>
+                </button>
+                <button
+                  onClick={() => handleCopyName(`\`${contextMenu.name}\``)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left transition-colors"
+                >
+                  <Code className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>{t('sidebar.copyColumnBackticks') || 'Copiar con comillas (`campo`)'}</span>
+                </button>
+                {contextMenu.meta?.tableName && (
+                  <button
+                    onClick={() => {
+                      onSelectObjectSql(
+                        `SELECT \`${contextMenu.name}\` FROM \`${contextMenu.meta.tableName}\` LIMIT 100;`,
+                        true
+                      );
+                      setContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <Play className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{t('sidebar.queryColumn') || 'Consultar este campo'}</span>
+                  </button>
+                )}
               </div>
             </>
           )}

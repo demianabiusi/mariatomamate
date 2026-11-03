@@ -1376,6 +1376,15 @@ export class MariaDbService {
     triggers: { name: string; table: string; event: string; timing: string }[];
     events: string[];
     columnsByTable: Record<string, string[]>;
+    columnsDetailsByTable?: Record<string, {
+      name: string;
+      type: string;
+      dataType: string;
+      isPrimary: boolean;
+      isNullable: boolean;
+      isAutoIncrement: boolean;
+      comment?: string;
+    }[]>;
   }> {
     return this.executeWithAutoReconnect(async (conn) => {
       const currentDb = this.currentConfig?.database || null;
@@ -1391,7 +1400,8 @@ export class MariaDbService {
           functions: [],
           triggers: [],
           events: [],
-          columnsByTable: {}
+          columnsByTable: {},
+          columnsDetailsByTable: {}
         };
       }
 
@@ -1501,11 +1511,29 @@ export class MariaDbService {
         // Events might not be enabled or user lacks grant
       }
 
-      // 5. Columns by table (for autocomplete)
+      // 5. Columns and details by table (for autocomplete & object explorer)
       const columnsByTable: Record<string, string[]> = {};
+      const columnsDetailsByTable: Record<string, Array<{
+        name: string;
+        type: string;
+        dataType: string;
+        isPrimary: boolean;
+        isNullable: boolean;
+        isAutoIncrement: boolean;
+        comment?: string;
+      }>> = {};
+
       try {
         const [colRows] = await conn.query(
-          `SELECT TABLE_NAME, COLUMN_NAME 
+          `SELECT 
+             TABLE_NAME, 
+             COLUMN_NAME, 
+             COLUMN_TYPE, 
+             DATA_TYPE, 
+             IS_NULLABLE, 
+             COLUMN_KEY, 
+             EXTRA,
+             COLUMN_COMMENT
            FROM information_schema.COLUMNS 
            WHERE TABLE_SCHEMA = ? 
            ORDER BY TABLE_NAME, ORDINAL_POSITION;`,
@@ -1515,8 +1543,26 @@ export class MariaDbService {
           for (const c of colRows as any[]) {
             const tName = c.TABLE_NAME;
             const cName = c.COLUMN_NAME;
+            const cType = (c.COLUMN_TYPE || c.DATA_TYPE || '').toLowerCase();
+            const dType = (c.DATA_TYPE || '').toLowerCase();
+            const isPri = c.COLUMN_KEY === 'PRI';
+            const isNull = c.IS_NULLABLE === 'YES';
+            const isAuto = (c.EXTRA || '').toLowerCase().includes('auto_increment');
+            const comment = c.COLUMN_COMMENT || undefined;
+
             if (!columnsByTable[tName]) columnsByTable[tName] = [];
             columnsByTable[tName].push(cName);
+
+            if (!columnsDetailsByTable[tName]) columnsDetailsByTable[tName] = [];
+            columnsDetailsByTable[tName].push({
+              name: cName,
+              type: cType,
+              dataType: dType,
+              isPrimary: isPri,
+              isNullable: isNull,
+              isAutoIncrement: isAuto,
+              comment
+            });
           }
         }
       } catch {
@@ -1532,7 +1578,8 @@ export class MariaDbService {
         functions,
         triggers,
         events,
-        columnsByTable
+        columnsByTable,
+        columnsDetailsByTable
       };
     });
   }

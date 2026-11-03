@@ -204,7 +204,14 @@
     "dropEvent": "Eliminar (DROP EVENT)",
     "dropTable": "Eliminar Tabla (DROP TABLE)",
     "createDatabase": "Crear Nueva Base de Datos...",
-    "dropDatabase": "Eliminar Base de Datos..."
+    "dropDatabase": "Eliminar Base de Datos...",
+    "expandColumns": "Desplegar campos",
+    "collapseColumns": "Plegar campos",
+    "copyColumnName": "Copiar nombre de columna",
+    "copyColumnBackticks": "Copiar con comillas invertidas",
+    "queryColumn": "Consultar campo (SELECT)",
+    "columnCopied": "Nombre de columna copiado",
+    "columnsCount": "campos"
   },
   "editor": {
     "queryTab": "Consulta",

@@ -185,6 +185,16 @@ export interface AppSettings {
   autoConnectOnStartup?: boolean;
 }
 
+export interface SchemaColumnDetail {
+  name: string;
+  type: string;
+  dataType: string;
+  isPrimary: boolean;
+  isNullable: boolean;
+  isAutoIncrement: boolean;
+  comment?: string;
+}
+
 export interface SchemaObjects {
   databases: string[];
   currentDatabase: string | null;
@@ -195,6 +205,7 @@ export interface SchemaObjects {
   triggers: { name: string; table: string; event: string; timing: string }[];
   events: string[];
   columnsByTable: Record<string, string[]>;
+  columnsDetailsByTable?: Record<string, SchemaColumnDetail[]>;
 }
 
 export interface DumpOptions {
