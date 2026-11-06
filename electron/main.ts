@@ -221,6 +221,18 @@ ipcMain.handle('app:save-settings', async (_, patch) => {
   }
 });
 
+// IPC: App Runtime & Build Info
+ipcMain.handle('app:get-info', async () => {
+  return {
+    version: app.getVersion(),
+    electronVersion: process.versions.electron || '',
+    chromeVersion: process.versions.chrome || '',
+    nodeVersion: process.versions.node || '',
+    platform: process.platform,
+    arch: process.arch
+  };
+});
+
 // IPC: Connection Management
 ipcMain.handle('db:get-saved-connections', async () => {
   try {

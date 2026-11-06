@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App settings & persistence
   getAppSettings: () => ipcRenderer.invoke('app:get-settings'),
   saveAppSettings: (patch: any) => ipcRenderer.invoke('app:save-settings', patch),
+  getAppInfo: () => ipcRenderer.invoke('app:get-info'),
   
   // Databases / Multi-schema navigation
   getDatabases: () => ipcRenderer.invoke('db:get-databases'),

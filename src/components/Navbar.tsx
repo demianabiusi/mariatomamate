@@ -21,8 +21,12 @@ import {
   Activity,
   Sliders,
   Search,
-  Wrench
+  Wrench,
+  Calendar,
+  Info
 } from 'lucide-react';
+import { getFormattedBuildDate } from '../utils/buildInfo';
+import { AboutModal } from './Modals/AboutModal';
 
 interface NavbarProps {
   isConnected: boolean;
@@ -62,26 +66,43 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { theme, setTheme, availableThemes, currentThemeOption } = useTheme();
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
 
+  const formattedBuildDate = getFormattedBuildDate();
   const currentLang = availableLanguages.find(l => l.code === language) || availableLanguages[0];
 
   return (
-    <header className="h-12 bg-zinc-950 border-b border-zinc-800/90 flex items-center justify-between px-4 select-none shrink-0">
+    <>
+      <header className="h-12 bg-zinc-950 border-b border-zinc-800/90 flex items-center justify-between px-4 select-none shrink-0">
       
       {/* Brand & App Title */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={onOpenConnectionModal} title="Administrador de conexiones">
+        <div 
+          className="flex items-center gap-2 cursor-pointer group/brand" 
+          onClick={() => setIsAboutModalOpen(true)} 
+          title={`Maria Toma Mate v${packageInfo.version}\n${t('navbar.buildDate') || 'Fecha de compilación'}: ${formattedBuildDate}\nClic para ver detalles completos`}
+        >
           <img 
             src={appIconUrl} 
             alt="Maria Toma Mate Logo" 
-            className="w-7 h-7 rounded-lg shadow-md shadow-emerald-500/25 hover:scale-105 transition-transform" 
+            className="w-7 h-7 rounded-lg shadow-md shadow-emerald-500/25 group-hover/brand:scale-105 transition-transform" 
           />
           <div>
             <h1 className="text-sm font-bold tracking-wide text-zinc-100 flex items-center gap-1.5">
               Maria Toma <span className="text-emerald-400">Mate</span>
               <span className="text-xs">🧉</span>
-              <span className="text-[10px] font-normal px-1.5 py-0.2 bg-zinc-800 text-zinc-400 rounded">
+              <span 
+                className="text-[10px] font-mono px-1.5 py-0.2 bg-zinc-800 text-zinc-300 rounded border border-zinc-700/60 font-medium group-hover/brand:border-emerald-500/50 group-hover/brand:text-emerald-300 transition-colors"
+                title={`Versión: ${packageInfo.version}\n${t('navbar.buildDate') || 'Fecha de compilación'}: ${formattedBuildDate}`}
+              >
                 v{packageInfo.version}
+              </span>
+              <span 
+                className="text-[10px] font-mono px-1.5 py-0.2 bg-zinc-900 text-zinc-400 rounded border border-zinc-800 hidden sm:inline-flex items-center gap-1 group-hover/brand:border-zinc-700 transition-colors"
+                title={`${t('navbar.buildDate') || 'Fecha de compilación'}: ${formattedBuildDate}`}
+              >
+                <Calendar className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                <span>{formattedBuildDate}</span>
               </span>
             </h1>
           </div>
@@ -313,6 +334,33 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </div>
                   </button>
                 </div>
+
+                <div className="my-1.5 border-t border-zinc-800" />
+
+                {/* Section: App info & About */}
+                <div className="px-1 space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsToolsMenuOpen(false);
+                      setIsAboutModalOpen(true);
+                    }}
+                    className="w-full flex items-start gap-2.5 px-2.5 py-1.5 text-left rounded-lg transition-colors hover:bg-zinc-800/80 group"
+                  >
+                    <div className="mt-0.5 p-1 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60 group-hover:bg-zinc-700/60 group-hover:text-emerald-400">
+                      <Info className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 flex items-center justify-between">
+                        <span>{t('navbar.about') || 'Acerca de Maria Toma Mate'}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">v{packageInfo.version}</span>
+                      </div>
+                      <div className="text-[11px] text-zinc-400 leading-tight truncate">
+                        {t('navbar.aboutDesc') || 'Versión, fecha de compilación y créditos'}
+                      </div>
+                    </div>
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -500,5 +548,11 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
     </header>
+
+    <AboutModal
+      isOpen={isAboutModalOpen}
+      onClose={() => setIsAboutModalOpen(false)}
+    />
+  </>
   );
 };

@@ -49,6 +49,14 @@ jobs:
         with:
           ref: ${{ needs.release-please.outputs.tag_name || github.ref }}
 
+      - name: Sync package.json version with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "Syncing package.json version to $TAG_VERSION from tag $GITHUB_REF_NAME"
+          npm version "$TAG_VERSION" --no-git-tag-version --allow-same-version
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -87,6 +95,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.release-please.outputs.tag_name || github.ref }}
+
+      - name: Sync package.json version with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "Syncing package.json version to $TAG_VERSION from tag $GITHUB_REF_NAME"
+          npm version "$TAG_VERSION" --no-git-tag-version --allow-same-version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -156,3 +172,25 @@ jobs:
           generate_release_notes: ${{ needs.release-please.outputs.release_created != 'true' }}
           draft: false
           prerelease: false
+
+      - name: Sync version back to main branch
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          npm version "$TAG_VERSION" --no-git-tag-version --allow-same-version
+          node -e "
+            const fs = require('fs');
+            const file = '.release-please-manifest.json';
+            if (fs.existsSync(file)) {
+              const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+              manifest['.'] = '$TAG_VERSION';
+              fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+            }
+          "
+          git add package.json .release-please-manifest.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: sync package version to $TAG_VERSION [skip ci]" && git push origin main)

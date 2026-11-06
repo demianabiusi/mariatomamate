@@ -66,7 +66,23 @@
     "language": "Language",
     "theme": "Theme",
     "themeTooltip": "Change visual theme (Light / Dark)",
-    "activeDatabase": "Active DB:"
+    "activeDatabase": "Active DB:",
+    "about": "About Maria Toma Mate...",
+    "aboutTooltip": "View version, build date, and application credits",
+    "aboutDesc": "Version, build date, and credits",
+    "buildDate": "Build Date"
+  },
+  "aboutModal": {
+    "title": "About Maria Toma Mate",
+    "subtitle": "Modern, lightweight database client for MariaDB and MySQL",
+    "version": "Version",
+    "buildDate": "Build Date",
+    "environment": "Runtime Environment",
+    "author": "Author",
+    "license": "License",
+    "githubRepo": "GitHub Repository",
+    "copyInfo": "Copy info",
+    "infoCopied": "System info copied!"
   },
   "process": {
     "title": "Real-time Processlist Monitor",

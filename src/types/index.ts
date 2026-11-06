@@ -474,6 +474,18 @@ export interface ElectronAPI {
   // Server Variables & Status Monitor
   getServerVariables: () => Promise<IpcResponse<ServerVariablesResponse>>;
   setServerVariable: (name: string, value: string) => Promise<IpcResponse<{ success: boolean; sql: string }>>;
+
+  // App & Environment info
+  getAppInfo?: () => Promise<AppInfo>;
+}
+
+export interface AppInfo {
+  version: string;
+  electronVersion: string;
+  chromeVersion: string;
+  nodeVersion: string;
+  platform: string;
+  arch: string;
 }
 
 export interface ServerVariableItem {
