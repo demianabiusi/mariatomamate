@@ -192,5 +192,10 @@ jobs:
               fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
             }
           "
-          git add package.json .release-please-manifest.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: sync package version to $TAG_VERSION [skip ci]" && git push origin main)
+          git add package.json package-lock.json .release-please-manifest.json
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: sync package version to $TAG_VERSION [skip ci]"
+            git push origin main
+          else
+            echo "Version on main is already up to date ($TAG_VERSION)"
+          fi

@@ -24,6 +24,7 @@ function runOutput(cmd) {
 
 const rootDir = path.resolve(__dirname, '..');
 const pkgPath = path.join(rootDir, 'package.json');
+const lockPath = path.join(rootDir, 'package-lock.json');
 const manifestPath = path.join(rootDir, '.release-please-manifest.json');
 
 if (!fs.existsSync(pkgPath)) {
@@ -70,10 +71,24 @@ console.log(`\n=============================================`);
 console.log(`🚀 Incrementando versión: ${currentVersion} -> ${newVersion}`);
 console.log(`=============================================\n`);
 
-// 1. Actualizar package.json
+// 1. Actualizar package.json y package-lock.json
 pkg.version = newVersion;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 console.log(`✓ Actualizado package.json a ${newVersion}`);
+
+if (fs.existsSync(lockPath)) {
+  try {
+    const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    lock.version = newVersion;
+    if (lock.packages && lock.packages['']) {
+      lock.packages[''].version = newVersion;
+    }
+    fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+    console.log(`✓ Actualizado package-lock.json a ${newVersion}`);
+  } catch (err) {
+    console.warn(`! No se pudo actualizar package-lock.json:`, err);
+  }
+}
 
 // 2. Actualizar .release-please-manifest.json si existe
 if (fs.existsSync(manifestPath)) {
@@ -88,7 +103,7 @@ if (fs.existsSync(manifestPath)) {
 }
 
 // 3. Stage de los archivos de versión
-run('git add package.json .release-please-manifest.json');
+run('git add package.json package-lock.json .release-please-manifest.json');
 
 // 4. Commit y creación de tag
 const tagName = `v${newVersion}`;
