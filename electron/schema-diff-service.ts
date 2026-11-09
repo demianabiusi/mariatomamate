@@ -165,6 +165,7 @@ export interface MigrationScriptOptions {
   includeDropRoutines?: boolean;
   includeDropTriggers?: boolean;
   includeDropEvents?: boolean;
+  forceRecreateSelected?: boolean;
   targetDatabaseOverride?: string;
 }
 
@@ -1128,6 +1129,51 @@ export class SchemaDiffService {
   }
 
   /**
+   * Helper for topological sorting of schema objects so dependencies are created before dependents
+   */
+  private topologicalSort<T extends { name: string }>(
+    items: T[],
+    getDependencies: (item: T, allNamesLower: Set<string>) => string[]
+  ): T[] {
+    if (items.length <= 1) return items;
+    const byLower = new Map<string, T>();
+    const allNamesLower = new Set<string>();
+    for (const it of items) {
+      const low = it.name.toLowerCase();
+      byLower.set(low, it);
+      allNamesLower.add(low);
+    }
+
+    const visited = new Set<string>();
+    const visiting = new Set<string>();
+    const result: T[] = [];
+
+    const visit = (lowName: string) => {
+      if (visited.has(lowName) || visiting.has(lowName)) return;
+      visiting.add(lowName);
+
+      const item = byLower.get(lowName);
+      if (item) {
+        const deps = getDependencies(item, allNamesLower);
+        for (const depLow of deps) {
+          if (depLow !== lowName && byLower.has(depLow)) {
+            visit(depLow);
+          }
+        }
+        visited.add(lowName);
+        result.push(item);
+      }
+      visiting.delete(lowName);
+    };
+
+    for (const it of items) {
+      visit(it.name.toLowerCase());
+    }
+
+    return result;
+  }
+
+  /**
    * Generates an actionable, ordered SQL migration script from diff results
    */
   public generateMigrationScript(
@@ -1178,14 +1224,20 @@ export class SchemaDiffService {
       lines.push('');
     }
 
-    // Phase 2: Create missing tables
-    const tableCreates: string[] = [];
-    for (const tDiff of diff.tables) {
-      if (options.selectedTables && options.selectedTables[tDiff.name] === false) continue;
-      if (tDiff.status === 'missing_in_target' && tDiff.createSql) {
-        tableCreates.push(tDiff.createSql);
-      }
-    }
+    // Phase 2: Create missing tables (topologically sorted by Foreign Key references)
+    const missingTables = diff.tables.filter(tDiff => {
+      if (options.selectedTables && options.selectedTables[tDiff.name] === false) return false;
+      return tDiff.status === 'missing_in_target' && Boolean(tDiff.createSql);
+    });
+
+    const sortedMissingTables = this.topologicalSort(missingTables, (tDiff) => {
+      const fks = tDiff.sourceTable?.foreignKeys || {};
+      return Object.values(fks)
+        .map((fk: any) => String(fk.referencedTable || '').toLowerCase())
+        .filter(Boolean);
+    });
+
+    const tableCreates = sortedMissingTables.map(t => t.createSql!);
 
     if (tableCreates.length > 0) {
       lines.push('-- ------------------------------------------------------------------------------');
@@ -1260,15 +1312,85 @@ export class SchemaDiffService {
       lines.push('');
     }
 
-    // Phase 5: Views
-    const viewStatements: string[] = [];
-    for (const vDiff of diff.views) {
-      if (options.selectedViews && options.selectedViews[vDiff.name] === false) continue;
+    // Helper to extract referenced object names from SQL text for topological sorting
+    const getSqlReferences = (ddl: string | undefined, candidatesLower: Set<string>): string[] => {
+      if (!ddl || candidatesLower.size === 0) return [];
+      const refs: string[] = [];
+      const tokenRegex = /`?([a-zA-Z0-9_$]+)`?/g;
+      let m: RegExpExecArray | null;
+      while ((m = tokenRegex.exec(ddl)) !== null) {
+        const low = m[1].toLowerCase();
+        if (candidatesLower.has(low)) {
+          refs.push(low);
+        }
+      }
+      return refs;
+    };
 
-      if (vDiff.status === 'missing_in_target' || vDiff.status === 'different') {
-        if (vDiff.createSql) {
+    // Phase 5: Functions (Created BEFORE Views and Procedures so Views/SPs can invoke them)
+    const activeFunctions = diff.functions.filter(fDiff => {
+      if (options.selectedFunctions && options.selectedFunctions[fDiff.name] === false) return false;
+      if (fDiff.status === 'missing_in_target' || fDiff.status === 'different') return true;
+      if (fDiff.status === 'identical' && options.forceRecreateSelected && options.selectedFunctions?.[fDiff.name] === true) return true;
+      if (fDiff.status === 'extra_in_target' && options.includeDropRoutines) return true;
+      return false;
+    });
+
+    const sortedFunctions = this.topologicalSort(activeFunctions, (fDiff, allNames) =>
+      getSqlReferences(fDiff.createSql || fDiff.sourceDdl, allNames)
+    );
+
+    const funcStatements: string[] = [];
+    for (const fDiff of sortedFunctions) {
+      const sqlToCreate = fDiff.createSql || fDiff.sourceDdl;
+      if (
+        fDiff.status === 'missing_in_target' ||
+        fDiff.status === 'different' ||
+        (fDiff.status === 'identical' && options.forceRecreateSelected)
+      ) {
+        if (sqlToCreate) {
+          funcStatements.push(`DROP FUNCTION IF EXISTS \`${fDiff.name}\`;;`);
+          funcStatements.push(`${sqlToCreate};;`);
+        }
+      } else if (fDiff.status === 'extra_in_target' && options.includeDropRoutines) {
+        funcStatements.push(`DROP FUNCTION IF EXISTS \`${fDiff.name}\`;;`);
+      }
+    }
+
+    if (funcStatements.length > 0) {
+      lines.push('-- ------------------------------------------------------------------------------');
+      lines.push('-- 5. FUNCIONES ALMACENADAS');
+      lines.push('-- ------------------------------------------------------------------------------');
+      lines.push('DELIMITER ;;');
+      lines.push(...funcStatements);
+      lines.push('DELIMITER ;');
+      lines.push('');
+    }
+
+    // Phase 6: Views (Topologically sorted so base views are created before dependent views)
+    const activeViews = diff.views.filter(vDiff => {
+      if (options.selectedViews && options.selectedViews[vDiff.name] === false) return false;
+      if (vDiff.status === 'missing_in_target' || vDiff.status === 'different') return true;
+      if (vDiff.status === 'identical' && options.forceRecreateSelected && options.selectedViews?.[vDiff.name] === true) return true;
+      if (vDiff.status === 'extra_in_target' && options.includeDropRoutines) return true;
+      return false;
+    });
+
+    const sortedViews = this.topologicalSort(activeViews, (vDiff, allNames) =>
+      getSqlReferences(vDiff.createSql || vDiff.sourceDdl, allNames)
+    );
+
+    const viewStatements: string[] = [];
+    for (const vDiff of sortedViews) {
+      const sqlToCreate = vDiff.createSql || vDiff.sourceDdl;
+      if (
+        vDiff.status === 'missing_in_target' ||
+        vDiff.status === 'different' ||
+        (vDiff.status === 'identical' && options.forceRecreateSelected)
+      ) {
+        if (sqlToCreate) {
           // Normalize to CREATE OR REPLACE VIEW
-          let viewSql = vDiff.createSql.replace(/^CREATE\s+VIEW/i, 'CREATE OR REPLACE VIEW');
+          let viewSql = sqlToCreate.replace(/^CREATE\s+VIEW/i, 'CREATE OR REPLACE VIEW');
           if (!viewSql.trim().toUpperCase().startsWith('CREATE OR REPLACE VIEW')) {
             viewSql = `CREATE OR REPLACE VIEW \`${vDiff.name}\` AS ` + viewSql.replace(/^CREATE.*?VIEW\s+`?[^`\s]+`?\s+AS\s+/i, '');
           }
@@ -1282,21 +1404,36 @@ export class SchemaDiffService {
 
     if (viewStatements.length > 0) {
       lines.push('-- ------------------------------------------------------------------------------');
-      lines.push('-- 5. VISTAS');
+      lines.push('-- 6. VISTAS');
       lines.push('-- ------------------------------------------------------------------------------');
       lines.push(...viewStatements);
       lines.push('');
     }
 
-    // Phase 6: Procedures
-    const procStatements: string[] = [];
-    for (const pDiff of diff.procedures) {
-      if (options.selectedProcedures && options.selectedProcedures[pDiff.name] === false) continue;
+    // Phase 7: Procedures (Topologically sorted so called procedures are created before callers)
+    const activeProcedures = diff.procedures.filter(pDiff => {
+      if (options.selectedProcedures && options.selectedProcedures[pDiff.name] === false) return false;
+      if (pDiff.status === 'missing_in_target' || pDiff.status === 'different') return true;
+      if (pDiff.status === 'identical' && options.forceRecreateSelected && options.selectedProcedures?.[pDiff.name] === true) return true;
+      if (pDiff.status === 'extra_in_target' && options.includeDropRoutines) return true;
+      return false;
+    });
 
-      if (pDiff.status === 'missing_in_target' || pDiff.status === 'different') {
-        if (pDiff.createSql) {
+    const sortedProcedures = this.topologicalSort(activeProcedures, (pDiff, allNames) =>
+      getSqlReferences(pDiff.createSql || pDiff.sourceDdl, allNames)
+    );
+
+    const procStatements: string[] = [];
+    for (const pDiff of sortedProcedures) {
+      const sqlToCreate = pDiff.createSql || pDiff.sourceDdl;
+      if (
+        pDiff.status === 'missing_in_target' ||
+        pDiff.status === 'different' ||
+        (pDiff.status === 'identical' && options.forceRecreateSelected)
+      ) {
+        if (sqlToCreate) {
           procStatements.push(`DROP PROCEDURE IF EXISTS \`${pDiff.name}\`;;`);
-          procStatements.push(`${pDiff.createSql};;`);
+          procStatements.push(`${sqlToCreate};;`);
         }
       } else if (pDiff.status === 'extra_in_target' && options.includeDropRoutines) {
         procStatements.push(`DROP PROCEDURE IF EXISTS \`${pDiff.name}\`;;`);
@@ -1305,35 +1442,10 @@ export class SchemaDiffService {
 
     if (procStatements.length > 0) {
       lines.push('-- ------------------------------------------------------------------------------');
-      lines.push('-- 6. PROCEDIMIENTOS ALMACENADOS');
+      lines.push('-- 7. PROCEDIMIENTOS ALMACENADOS');
       lines.push('-- ------------------------------------------------------------------------------');
       lines.push('DELIMITER ;;');
       lines.push(...procStatements);
-      lines.push('DELIMITER ;');
-      lines.push('');
-    }
-
-    // Phase 7: Functions
-    const funcStatements: string[] = [];
-    for (const fDiff of diff.functions) {
-      if (options.selectedFunctions && options.selectedFunctions[fDiff.name] === false) continue;
-
-      if (fDiff.status === 'missing_in_target' || fDiff.status === 'different') {
-        if (fDiff.createSql) {
-          funcStatements.push(`DROP FUNCTION IF EXISTS \`${fDiff.name}\`;;`);
-          funcStatements.push(`${fDiff.createSql};;`);
-        }
-      } else if (fDiff.status === 'extra_in_target' && options.includeDropRoutines) {
-        funcStatements.push(`DROP FUNCTION IF EXISTS \`${fDiff.name}\`;;`);
-      }
-    }
-
-    if (funcStatements.length > 0) {
-      lines.push('-- ------------------------------------------------------------------------------');
-      lines.push('-- 7. FUNCIONES ALMACENADAS');
-      lines.push('-- ------------------------------------------------------------------------------');
-      lines.push('DELIMITER ;;');
-      lines.push(...funcStatements);
       lines.push('DELIMITER ;');
       lines.push('');
     }
@@ -1343,10 +1455,15 @@ export class SchemaDiffService {
     for (const trDiff of diff.triggers) {
       if (options.selectedTriggers && options.selectedTriggers[trDiff.name] === false) continue;
 
-      if (trDiff.status === 'missing_in_target' || trDiff.status === 'different') {
-        if (trDiff.createSql) {
+      const sqlToCreate = trDiff.createSql || trDiff.sourceDdl;
+      if (
+        trDiff.status === 'missing_in_target' ||
+        trDiff.status === 'different' ||
+        (trDiff.status === 'identical' && options.forceRecreateSelected && options.selectedTriggers?.[trDiff.name] === true)
+      ) {
+        if (sqlToCreate) {
           triggerStatements.push(`DROP TRIGGER IF EXISTS \`${trDiff.name}\`;;`);
-          triggerStatements.push(`${trDiff.createSql};;`);
+          triggerStatements.push(`${sqlToCreate};;`);
         }
       } else if (trDiff.status === 'extra_in_target' && options.includeDropTriggers) {
         triggerStatements.push(`DROP TRIGGER IF EXISTS \`${trDiff.name}\`;;`);
@@ -1368,10 +1485,15 @@ export class SchemaDiffService {
     for (const evDiff of diff.events) {
       if (options.selectedEvents && options.selectedEvents[evDiff.name] === false) continue;
 
-      if (evDiff.status === 'missing_in_target' || evDiff.status === 'different') {
-        if (evDiff.createSql) {
+      const sqlToCreate = evDiff.createSql || evDiff.sourceDdl;
+      if (
+        evDiff.status === 'missing_in_target' ||
+        evDiff.status === 'different' ||
+        (evDiff.status === 'identical' && options.forceRecreateSelected && options.selectedEvents?.[evDiff.name] === true)
+      ) {
+        if (sqlToCreate) {
           eventStatements.push(`DROP EVENT IF EXISTS \`${evDiff.name}\`;`);
-          eventStatements.push(`${evDiff.createSql};`);
+          eventStatements.push(`${sqlToCreate};`);
         }
       } else if (evDiff.status === 'extra_in_target' && options.includeDropEvents) {
         eventStatements.push(`DROP EVENT IF EXISTS \`${evDiff.name}\`;`);

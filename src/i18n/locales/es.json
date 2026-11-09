@@ -386,6 +386,7 @@
     "comparing": "Comparando esquemas...",
     "swapConnections": "Invertir Origen y Destino",
     "tabDiff": "Diferencias Detectadas",
+    "tabDependencies": "Por Lista y Dependencias",
     "tabScript": "Script SQL de Migración",
     "identicalNotice": "¡Los esquemas de ambas bases de datos son completamente idénticos! No se detectaron diferencias.",
     "hideIdentical": "Ocultar objetos idénticos",

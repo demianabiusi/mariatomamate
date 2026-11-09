@@ -386,6 +386,7 @@
     "comparing": "Comparing schemas...",
     "swapConnections": "Swap Source & Target",
     "tabDiff": "Detected Differences",
+    "tabDependencies": "By List & Dependencies",
     "tabScript": "Migration SQL Script",
     "identicalNotice": "Both database schemas are completely identical! No differences found.",
     "hideIdentical": "Hide identical objects",

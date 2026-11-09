@@ -40,8 +40,17 @@ import {
   CheckSquare,
   Square,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Sparkles,
+  Plus,
+  Trash2,
+  Link
 } from 'lucide-react';
+import {
+  resolveObjectDependencies,
+  DependencyResolveOptions,
+  DependencyAnalysisResult
+} from '../../utils/dependencyResolver';
 
 loader.config({ monaco });
 
@@ -112,8 +121,20 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
   const [generatedScript, setGeneratedScript] = useState<string>('');
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
 
-  // Active Tab: 'diff' or 'script'
-  const [activeModalTab, setActiveModalTab] = useState<'diff' | 'script'>('diff');
+  // Active Tab: 'diff', 'dependencies', or 'script'
+  const [activeModalTab, setActiveModalTab] = useState<'diff' | 'dependencies' | 'script'>('diff');
+
+  // Targeted Object List & Dependency Resolution states
+  const [depInputText, setDepInputText] = useState<string>('');
+  const [depOptions, setDepOptions] = useState<DependencyResolveOptions>({
+    recursive: true,
+    includeTablesAndFks: true,
+    includeViews: true,
+    includeRoutines: true,
+    includeTableTriggers: false
+  });
+  const [isDependencyFilterActive, setIsDependencyFilterActive] = useState<boolean>(false);
+  const [quickAddQuery, setQuickAddQuery] = useState<string>('');
 
   // Inspector selected item
   const [selectedObjectKey, setSelectedObjectKey] = useState<string | null>(null);
@@ -166,6 +187,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
     setMigrationProgress(null);
     setActiveModalTab('diff');
     setSelectedObjectKey(null);
+    setIsDependencyFilterActive(false);
 
     const init = async () => {
       // 1. Determine initial source connection
@@ -365,40 +387,58 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
       if (res.success && res.data) {
         setDiffResult(res.data);
 
-        // Select all items that have differences by default
-        const initialSelections: Record<string, boolean> = {};
-        for (const tbl of res.data.tables) {
-          if (tbl.status !== 'identical') {
-            initialSelections[`table:${tbl.name}`] = true;
+        // If user already typed an object list in the Dependency Filter, apply it automatically
+        if (depInputText.trim().length > 0) {
+          const analysis = resolveObjectDependencies(res.data, depInputText, depOptions);
+          const depSelections: Record<string, boolean> = {};
+          for (const item of analysis.items) {
+            if (item.status !== 'identical' || options.forceRecreateSelected) {
+              depSelections[item.key] = true;
+            }
           }
-        }
-        for (const v of res.data.views) {
-          if (v.status !== 'identical') initialSelections[`view:${v.name}`] = true;
-        }
-        for (const p of res.data.procedures) {
-          if (p.status !== 'identical') initialSelections[`procedure:${p.name}`] = true;
-        }
-        for (const f of res.data.functions) {
-          if (f.status !== 'identical') initialSelections[`function:${f.name}`] = true;
-        }
-        for (const tr of res.data.triggers) {
-          if (tr.status !== 'identical') initialSelections[`trigger:${tr.name}`] = true;
-        }
-        for (const ev of res.data.events) {
-          if (ev.status !== 'identical') initialSelections[`event:${ev.name}`] = true;
-        }
-        setSelectedItems(initialSelections);
+          setSelectedItems(depSelections);
+          setIsDependencyFilterActive(true);
+          if (analysis.items.length > 0) {
+            setSelectedObjectKey(analysis.items[0].key);
+          }
+          generateScript(res.data, depSelections, options);
+        } else {
+          // Select all items that have differences by default
+          const initialSelections: Record<string, boolean> = {};
+          for (const tbl of res.data.tables) {
+            if (tbl.status !== 'identical') {
+              initialSelections[`table:${tbl.name}`] = true;
+            }
+          }
+          for (const v of res.data.views) {
+            if (v.status !== 'identical') initialSelections[`view:${v.name}`] = true;
+          }
+          for (const p of res.data.procedures) {
+            if (p.status !== 'identical') initialSelections[`procedure:${p.name}`] = true;
+          }
+          for (const f of res.data.functions) {
+            if (f.status !== 'identical') initialSelections[`function:${f.name}`] = true;
+          }
+          for (const tr of res.data.triggers) {
+            if (tr.status !== 'identical') initialSelections[`trigger:${tr.name}`] = true;
+          }
+          for (const ev of res.data.events) {
+            if (ev.status !== 'identical') initialSelections[`event:${ev.name}`] = true;
+          }
+          setSelectedItems(initialSelections);
+          setIsDependencyFilterActive(false);
 
-        // Select first different item for inspector
-        const firstDiffTable = res.data.tables.find(t => t.status !== 'identical');
-        if (firstDiffTable) {
-          setSelectedObjectKey(`table:${firstDiffTable.name}`);
-        } else if (res.data.tables.length > 0) {
-          setSelectedObjectKey(`table:${res.data.tables[0].name}`);
-        }
+          // Select first different item for inspector
+          const firstDiffTable = res.data.tables.find(t => t.status !== 'identical');
+          if (firstDiffTable) {
+            setSelectedObjectKey(`table:${firstDiffTable.name}`);
+          } else if (res.data.tables.length > 0) {
+            setSelectedObjectKey(`table:${res.data.tables[0].name}`);
+          }
 
-        // Generate script
-        generateScript(res.data, initialSelections, options);
+          // Generate script
+          generateScript(res.data, initialSelections, options);
+        }
       } else {
         setComparisonError(res.error || 'Error desconocido al comparar metadatos.');
       }
@@ -425,15 +465,13 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
       const selectedTriggers: Record<string, boolean> = {};
       const selectedEvents: Record<string, boolean> = {};
 
-      for (const [key, selected] of Object.entries(selections)) {
-        const [type, name] = key.split(':');
-        if (type === 'table') selectedTables[name] = selected;
-        if (type === 'view') selectedViews[name] = selected;
-        if (type === 'procedure') selectedProcedures[name] = selected;
-        if (type === 'function') selectedFunctions[name] = selected;
-        if (type === 'trigger') selectedTriggers[name] = selected;
-        if (type === 'event') selectedEvents[name] = selected;
-      }
+      // Explicitly populate every object in diff so unselected objects are strictly false
+      for (const t of diff.tables) selectedTables[t.name] = Boolean(selections[`table:${t.name}`]);
+      for (const v of diff.views) selectedViews[v.name] = Boolean(selections[`view:${v.name}`]);
+      for (const p of diff.procedures) selectedProcedures[p.name] = Boolean(selections[`procedure:${p.name}`]);
+      for (const f of diff.functions) selectedFunctions[f.name] = Boolean(selections[`function:${f.name}`]);
+      for (const tr of diff.triggers) selectedTriggers[tr.name] = Boolean(selections[`trigger:${tr.name}`]);
+      for (const ev of diff.events) selectedEvents[ev.name] = Boolean(selections[`event:${ev.name}`]);
 
       const res = await window.electronAPI.generateMigrationScript(diff, {
         ...scriptOpts,
@@ -455,6 +493,76 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
       setIsGeneratingScript(false);
     }
   }, []);
+
+  // Live dependency resolution analysis
+  const dependencyAnalysis: DependencyAnalysisResult | null = useMemo(() => {
+    if (!diffResult || !depInputText.trim()) return null;
+    return resolveObjectDependencies(diffResult, depInputText, depOptions);
+  }, [diffResult, depInputText, depOptions]);
+
+  // Apply the resolved dependencies as the active selection & generate the synchronization script
+  const handleApplyDependencyFilter = (targetTab?: 'script' | 'diff') => {
+    if (!diffResult || !dependencyAnalysis) return;
+    const newSelections: Record<string, boolean> = {};
+    for (const item of dependencyAnalysis.items) {
+      if (item.status !== 'identical' || options.forceRecreateSelected) {
+        newSelections[item.key] = true;
+      }
+    }
+    setSelectedItems(newSelections);
+    setIsDependencyFilterActive(true);
+    generateScript(diffResult, newSelections, options);
+    if (targetTab) {
+      setActiveModalTab(targetTab);
+    }
+  };
+
+  // Reset dependency filter and select all differences again
+  const handleResetDependencyFilter = () => {
+    setIsDependencyFilterActive(false);
+    if (!diffResult) return;
+    const allDiffs: Record<string, boolean> = {};
+    for (const t of diffResult.tables) if (t.status !== 'identical') allDiffs[`table:${t.name}`] = true;
+    for (const v of diffResult.views) if (v.status !== 'identical') allDiffs[`view:${v.name}`] = true;
+    for (const p of diffResult.procedures) if (p.status !== 'identical') allDiffs[`procedure:${p.name}`] = true;
+    for (const f of diffResult.functions) if (f.status !== 'identical') allDiffs[`function:${f.name}`] = true;
+    for (const tr of diffResult.triggers) if (tr.status !== 'identical') allDiffs[`trigger:${tr.name}`] = true;
+    for (const ev of diffResult.events) if (ev.status !== 'identical') allDiffs[`event:${ev.name}`] = true;
+    setSelectedItems(allDiffs);
+    generateScript(diffResult, allDiffs, options);
+  };
+
+  // Quick-add autocomplete suggestions from schema
+  const quickAddSuggestions = useMemo(() => {
+    if (!diffResult || !quickAddQuery.trim()) return [];
+    const q = quickAddQuery.toLowerCase().trim();
+    const list: { type: string; name: string; status: string }[] = [];
+    for (const p of diffResult.procedures) {
+      if (p.name.toLowerCase().includes(q)) list.push({ type: 'PROCEDURE', name: p.name, status: p.status });
+    }
+    for (const t of diffResult.tables) {
+      if (t.name.toLowerCase().includes(q)) list.push({ type: 'TABLE', name: t.name, status: t.status });
+    }
+    for (const v of diffResult.views) {
+      if (v.name.toLowerCase().includes(q)) list.push({ type: 'VIEW', name: v.name, status: v.status });
+    }
+    for (const f of diffResult.functions) {
+      if (f.name.toLowerCase().includes(q)) list.push({ type: 'FUNCTION', name: f.name, status: f.status });
+    }
+    for (const tr of diffResult.triggers) {
+      if (tr.name.toLowerCase().includes(q)) list.push({ type: 'TRIGGER', name: tr.name, status: tr.status });
+    }
+    return list.slice(0, 12);
+  }, [diffResult, quickAddQuery]);
+
+  const handleAppendObjectToList = (name: string) => {
+    setDepInputText(prev => {
+      const trimmed = prev.trim();
+      if (!trimmed) return name;
+      return `${trimmed}\n${name}`;
+    });
+    setQuickAddQuery('');
+  };
 
   // Update script whenever selections or options change
   const handleToggleItem = (key: string) => {
@@ -572,21 +680,24 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
     if (!diffResult) return { tables: [], views: [], procedures: [], functions: [], triggers: [], events: [] };
     const q = searchQuery.toLowerCase().trim();
 
-    const match = (name: string, status: string) => {
+    const match = (key: string, name: string, status: string) => {
+      if (isDependencyFilterActive && dependencyAnalysis && !dependencyAnalysis.selectedMap[key]) {
+        return false;
+      }
       if (hideIdentical && status === 'identical') return false;
       if (!q) return true;
       return name.toLowerCase().includes(q);
     };
 
     return {
-      tables: diffResult.tables.filter(t => match(t.name, t.status)),
-      views: diffResult.views.filter(v => match(v.name, v.status)),
-      procedures: diffResult.procedures.filter(p => match(p.name, p.status)),
-      functions: diffResult.functions.filter(f => match(f.name, f.status)),
-      triggers: diffResult.triggers.filter(t => match(t.name, t.status)),
-      events: diffResult.events.filter(e => match(e.name, e.status))
+      tables: diffResult.tables.filter(t => match(`table:${t.name}`, t.name, t.status)),
+      views: diffResult.views.filter(v => match(`view:${v.name}`, v.name, v.status)),
+      procedures: diffResult.procedures.filter(p => match(`procedure:${p.name}`, p.name, p.status)),
+      functions: diffResult.functions.filter(f => match(`function:${f.name}`, f.name, f.status)),
+      triggers: diffResult.triggers.filter(t => match(`trigger:${t.name}`, t.name, t.status)),
+      events: diffResult.events.filter(e => match(`event:${e.name}`, e.name, e.status))
     };
-  }, [diffResult, searchQuery, hideIdentical]);
+  }, [diffResult, searchQuery, hideIdentical, isDependencyFilterActive, dependencyAnalysis]);
 
   // Currently inspected object
   const currentInspectedObject = useMemo(() => {
@@ -797,7 +908,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
 
           {/* Optional Options Drawer */}
           {showOptionsDrawer && (
-            <div className="mt-3 p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl grid grid-cols-2 md:grid-cols-4 gap-3 text-xs animate-in fade-in zoom-in-95 duration-100">
+            <div className="mt-3 p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl grid grid-cols-2 md:grid-cols-5 gap-3 text-xs animate-in fade-in zoom-in-95 duration-100">
               <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
                 <input
                   type="checkbox"
@@ -836,6 +947,16 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                   className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
                 />
                 <span>{t('schemaDiff.optDropRoutines')}</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
+                <input
+                  type="checkbox"
+                  checked={Boolean(options.forceRecreateSelected)}
+                  onChange={(e) => handleOptionChange('forceRecreateSelected', e.target.checked)}
+                  className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
+                />
+                <span>Forzar recreación de rutinas/vistas seleccionadas</span>
               </label>
             </div>
           )}
@@ -939,6 +1060,23 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveModalTab('dependencies')}
+              className={`flex items-center gap-2 py-3 border-b-2 font-medium transition-colors ${
+                activeModalTab === 'dependencies'
+                  ? 'border-indigo-500 text-indigo-400 font-semibold'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>{t('schemaDiff.tabDependencies')}</span>
+              {dependencyAnalysis && dependencyAnalysis.items.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10px]">
+                  {dependencyAnalysis.items.length}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setActiveModalTab('script')}
               className={`flex items-center gap-2 py-3 border-b-2 font-medium transition-colors ${
                 activeModalTab === 'script'
@@ -982,7 +1120,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
           {activeModalTab === 'diff' ? (
             /* TAB 1: Diff Explorer & Object Inspector */
             diffResult ? (
-              diffResult.summary.totalDifferences === 0 ? (
+              diffResult.summary.totalDifferences === 0 && !isDependencyFilterActive && !options.forceRecreateSelected && hideIdentical ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8">
                   <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4 shadow-lg shadow-emerald-500/10">
                     <CheckCircle2 className="w-8 h-8" />
@@ -990,9 +1128,17 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                   <h3 className="text-base font-bold text-zinc-100 mb-1">
                     {t('schemaDiff.identicalNotice')}
                   </h3>
-                  <p className="text-xs text-zinc-400 max-w-md">
+                  <p className="text-xs text-zinc-400 max-w-md mb-4">
                     Todas las tablas, columnas, índices, vistas y rutinas coinciden exactamente entre ambas bases de datos.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModalTab('dependencies')}
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-300 rounded-xl border border-amber-500/30 text-xs font-medium transition-colors"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>Sincronizar objetos específicos por lista y dependencias</span>
+                  </button>
                 </div>
               ) : (
                 <div className="h-full flex flex-col md:flex-row overflow-hidden">
@@ -1002,6 +1148,24 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                     
                     {/* List Toolbar (Search, filter, select all) */}
                     <div className="p-3 border-b border-zinc-800 space-y-2 shrink-0">
+                      {isDependencyFilterActive && dependencyAnalysis && (
+                        <div className="p-2 bg-amber-950/40 border border-amber-500/30 rounded-lg text-[11px] text-amber-200 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="truncate font-medium">
+                              Filtro por lista ({dependencyAnalysis.items.length} obj.)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleResetDependencyFilter}
+                            className="text-amber-300 hover:text-white underline shrink-0 text-[10px]"
+                          >
+                            Ver todos
+                          </button>
+                        </div>
+                      )}
+
                       <div className="relative">
                         <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
                         <input
@@ -1059,7 +1223,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                           <div className="space-y-0.5">
                             {filteredObjects.tables.map((tbl) => {
                               const key = `table:${tbl.name}`;
-                              const isSelected = selectedItems[key] !== false;
+                              const isSelected = Boolean(selectedItems[key]);
                               const isInspected = selectedObjectKey === key;
                               return (
                                 <div
@@ -1122,7 +1286,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                           <div className="space-y-0.5">
                             {filteredObjects.views.map((v) => {
                               const key = `view:${v.name}`;
-                              const isSelected = selectedItems[key] !== false;
+                              const isSelected = Boolean(selectedItems[key]);
                               const isInspected = selectedObjectKey === key;
                               return (
                                 <div
@@ -1146,7 +1310,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                                   </button>
                                   <span className="flex-1 font-mono truncate">{v.name}</span>
                                   <span className="px-1.5 py-0.2 text-[10px] font-mono font-bold rounded bg-zinc-800 text-zinc-400">
-                                    {v.status === 'missing_in_target' ? '+ Nueva' : v.status === 'different' ? '~ Modif.' : '- Sobrante'}
+                                    {v.status === 'missing_in_target' ? '+ Nueva' : v.status === 'different' ? '~ Modif.' : v.status === 'identical' ? '✓' : '- Sobrante'}
                                   </span>
                                 </div>
                               );
@@ -1165,7 +1329,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                           <div className="space-y-0.5">
                             {filteredObjects.procedures.map((p) => {
                               const key = `procedure:${p.name}`;
-                              const isSelected = selectedItems[key] !== false;
+                              const isSelected = Boolean(selectedItems[key]);
                               const isInspected = selectedObjectKey === key;
                               return (
                                 <div
@@ -1201,7 +1365,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                           <div className="space-y-0.5">
                             {filteredObjects.functions.map((f) => {
                               const key = `function:${f.name}`;
-                              const isSelected = selectedItems[key] !== false;
+                              const isSelected = Boolean(selectedItems[key]);
                               const isInspected = selectedObjectKey === key;
                               return (
                                 <div
@@ -1540,13 +1704,422 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                 <h3 className="text-sm font-semibold text-zinc-200 mb-1">
                   Listo para comparar metadatos
                 </h3>
-                <p className="text-xs text-zinc-500 max-w-sm">
+                <p className="text-xs text-zinc-500 max-w-sm mb-4">
                   Selecciona la base de datos de origen y la de destino, y pulsa "Comparar Metadatos" para analizar las diferencias.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveModalTab('dependencies')}
+                  className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-300 rounded-xl border border-amber-500/30 text-xs font-medium transition-colors"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>¿Tienes una lista de Stored Procedures o Tablas? Pégala aquí</span>
+                </button>
               </div>
             )
+          ) : activeModalTab === 'dependencies' ? (
+            /* TAB 2: Targeted Object List & Automatic Dependency Resolver */
+            <div className="h-full flex flex-col md:flex-row overflow-hidden bg-zinc-950/50">
+              
+              {/* Left Column: Object List Input & Dependency Settings */}
+              <div className="w-full md:w-96 border-r border-zinc-800 bg-zinc-950/80 p-4 flex flex-col gap-3.5 overflow-y-auto shrink-0">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Lista de Objetos a Sincronizar</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {diffResult && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const names: string[] = [];
+                            for (const p of diffResult.procedures) if (p.status !== 'identical') names.push(p.name);
+                            for (const f of diffResult.functions) if (f.status !== 'identical') names.push(f.name);
+                            for (const v of diffResult.views) if (v.status !== 'identical') names.push(v.name);
+                            for (const t of diffResult.tables) if (t.status !== 'identical') names.push(t.name);
+                            setDepInputText(names.join('\n'));
+                          }}
+                          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+                          title="Cargar todos los objetos con diferencias en la lista"
+                        >
+                          Cargar modificados
+                        </button>
+                      )}
+                      {depInputText.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDepInputText('');
+                            if (isDependencyFilterActive) {
+                              handleResetDependencyFilter();
+                            }
+                          }}
+                          className="text-[11px] text-zinc-500 hover:text-red-400 flex items-center gap-0.5"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Limpiar</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed mb-2">
+                    Pega tus <span className="text-zinc-200 font-medium">Stored Procedures, Tablas, Vistas o Funciones</span> (uno por línea o separados por coma). La herramienta analizará su código SQL y claves foráneas para incluir automáticamente las dependencias necesarias.
+                  </p>
+                  <textarea
+                    value={depInputText}
+                    onChange={(e) => setDepInputText(e.target.value)}
+                    rows={7}
+                    placeholder={'Ejemplo:\nsp_procesar_facturas\nsp_calcular_comisiones\nventas_cabecera\nvw_resumen_clientes'}
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-amber-500/70 rounded-xl p-3 text-xs font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none resize-y leading-relaxed"
+                  />
+                </div>
+
+                {/* Quick Object Picker from Schema (when diffResult is available) */}
+                {diffResult && (
+                  <div className="space-y-1.5 relative">
+                    <label className="text-[11px] font-medium text-zinc-400 block">
+                      Buscar y agregar objetos del esquema:
+                    </label>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-zinc-500" />
+                      <input
+                        type="text"
+                        value={quickAddQuery}
+                        onChange={(e) => setQuickAddQuery(e.target.value)}
+                        placeholder="Escribe nombre de SP, tabla, vista o función..."
+                        className="w-full bg-zinc-900 border border-zinc-800 focus:border-indigo-500 rounded-lg pl-8 pr-2 py-1.5 text-xs text-zinc-200 focus:outline-none placeholder-zinc-500"
+                      />
+                    </div>
+                    {quickAddSuggestions.length > 0 && (
+                      <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-h-44 overflow-y-auto divide-y divide-zinc-800/60 shadow-xl">
+                        {quickAddSuggestions.map((item) => (
+                          <button
+                            key={`${item.type}:${item.name}`}
+                            type="button"
+                            onClick={() => handleAppendObjectToList(item.name)}
+                            className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center justify-between gap-2 transition-colors"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono text-[9px] uppercase">
+                                {item.type}
+                              </span>
+                              <span className="font-mono text-zinc-200 truncate">{item.name}</span>
+                            </div>
+                            <Plus className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Dependency Resolution Options */}
+                <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl space-y-2 text-xs">
+                  <div className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                    <Link className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Opciones de Resolución de Dependencias</span>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
+                    <input
+                      type="checkbox"
+                      checked={depOptions.recursive}
+                      onChange={(e) => setDepOptions({ ...depOptions, recursive: e.target.checked })}
+                      className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
+                    />
+                    <span>Búsqueda transitiva / recursiva (cadena completa)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
+                    <input
+                      type="checkbox"
+                      checked={depOptions.includeTablesAndFks}
+                      onChange={(e) => setDepOptions({ ...depOptions, includeTablesAndFks: e.target.checked })}
+                      className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
+                    />
+                    <span>Incluir tablas usadas y sus tablas padre (Foreign Keys)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
+                    <input
+                      type="checkbox"
+                      checked={depOptions.includeViews}
+                      onChange={(e) => setDepOptions({ ...depOptions, includeViews: e.target.checked })}
+                      className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
+                    />
+                    <span>Incluir vistas consultadas y las tablas base de esas vistas</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
+                    <input
+                      type="checkbox"
+                      checked={depOptions.includeRoutines}
+                      onChange={(e) => setDepOptions({ ...depOptions, includeRoutines: e.target.checked })}
+                      className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
+                    />
+                    <span>Incluir otros SPs (CALL) y Funciones invocadas</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
+                    <input
+                      type="checkbox"
+                      checked={depOptions.includeTableTriggers}
+                      onChange={(e) => setDepOptions({ ...depOptions, includeTableTriggers: e.target.checked })}
+                      className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
+                    />
+                    <span>Incluir triggers asociados a las tablas detectadas</span>
+                  </label>
+
+                  <div className="pt-1.5 border-t border-zinc-800/80">
+                    <label className="flex items-center gap-2 cursor-pointer text-amber-300/90 hover:text-amber-200">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(options.forceRecreateSelected)}
+                        onChange={(e) => handleOptionChange('forceRecreateSelected', e.target.checked)}
+                        className="rounded border-zinc-700 text-amber-500 focus:ring-0"
+                      />
+                      <span>Forzar DROP + CREATE de rutinas/vistas aunque sean idénticas</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="mt-auto pt-2 space-y-2">
+                  {!diffResult ? (
+                    <button
+                      type="button"
+                      onClick={handleRunComparison}
+                      disabled={isComparing || !sourceDb || !targetDb}
+                      className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all"
+                    >
+                      <GitCompare className="w-4 h-4" />
+                      <span>Comparar Bases y Analizar Dependencias</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyDependencyFilter('script')}
+                        disabled={!dependencyAnalysis || dependencyAnalysis.items.length === 0}
+                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all"
+                      >
+                        <Code2 className="w-4 h-4" />
+                        <span>Generar Script Solo para Estos Objetos</span>
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleApplyDependencyFilter('diff')}
+                          disabled={!dependencyAnalysis || dependencyAnalysis.items.length === 0}
+                          className="flex-1 py-2 px-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-200 font-medium rounded-xl text-xs border border-zinc-700 transition-colors"
+                        >
+                          Filtrar Explorador Diff
+                        </button>
+
+                        {isDependencyFilterActive && (
+                          <button
+                            type="button"
+                            onClick={handleResetDependencyFilter}
+                            className="py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs border border-zinc-800 transition-colors"
+                          >
+                            Quitar filtro
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Dependency Graph / Chain & Resolved Objects Table */}
+              <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
+                {!diffResult ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-400">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-4">
+                      <Sparkles className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-sm font-bold text-zinc-200 mb-1">
+                      Analizador de Dependencias de Objetos SQL
+                    </h3>
+                    <p className="text-xs text-zinc-400 max-w-md leading-relaxed">
+                      Puedes escribir o pegar la lista de Stored Procedures, Tablas o Vistas a la izquierda ahora mismo, y luego pulsar <span className="text-indigo-400 font-semibold">"Comparar Bases y Analizar Dependencias"</span> para inspeccionar los objetos requeridos y generar el script de sincronización a medida.
+                    </p>
+                  </div>
+                ) : !dependencyAnalysis || (dependencyAnalysis.items.length === 0 && dependencyAnalysis.notFoundInputs.length === 0) ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-400">
+                    <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 mb-3">
+                      <Sparkles className="w-6 h-6 text-amber-400/70" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-zinc-200 mb-1">
+                      Ingresa uno o más objetos en el panel izquierdo
+                    </h3>
+                    <p className="text-xs text-zinc-500 max-w-md">
+                      Al escribir nombres de procedimientos almacenados, funciones, vistas o tablas, verás aquí en tiempo real qué tablas, claves foráneas y sub-rutinas necesitan para funcionar en <span className="text-amber-300 font-mono">{targetDb}</span>.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Summary KPI Cards */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+                      <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl">
+                        <div className="text-[11px] text-zinc-400">Objetos Raíz (En Lista)</div>
+                        <div className="text-lg font-bold font-mono text-zinc-100 mt-0.5">
+                          {dependencyAnalysis.summary.rootCount}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-zinc-900/90 border border-indigo-500/30 rounded-xl">
+                        <div className="text-[11px] text-indigo-300">Dependencias Detectadas</div>
+                        <div className="text-lg font-bold font-mono text-indigo-400 mt-0.5">
+                          +{dependencyAnalysis.summary.dependencyCount}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-zinc-900/90 border border-amber-500/30 rounded-xl">
+                        <div className="text-[11px] text-amber-300">Con Diferencias (A Sincronizar)</div>
+                        <div className="text-lg font-bold font-mono text-amber-400 mt-0.5">
+                          {dependencyAnalysis.summary.diffCount}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl">
+                        <div className="text-[11px] text-zinc-400">Idénticos en Destino</div>
+                        <div className="text-lg font-bold font-mono text-emerald-400 mt-0.5">
+                          {dependencyAnalysis.summary.identicalCount}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Warning for objects not found in schema */}
+                    {dependencyAnalysis.notFoundInputs.length > 0 && (
+                      <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-xl text-xs text-amber-200 flex items-start gap-2.5 shrink-0">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-semibold">Objetos no encontrados en el esquema: </span>
+                          <span className="font-mono text-amber-300">
+                            {dependencyAnalysis.notFoundInputs.join(', ')}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resolved Objects & Dependency Chain Table */}
+                    <div className="flex-1 border border-zinc-800 rounded-xl overflow-hidden bg-zinc-950/80 flex flex-col">
+                      <div className="px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between text-xs shrink-0">
+                        <span className="font-semibold text-zinc-200">
+                          Cadena de objetos resueltos ({dependencyAnalysis.items.length} en total)
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          El script ordenará automáticamente: Tablas Padre (FK) → Tablas → Funciones → Vistas → Procedimientos → Triggers
+                        </span>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="sticky top-0 bg-zinc-950 border-b border-zinc-800 text-zinc-400 z-10">
+                            <tr>
+                              <th className="p-2.5 w-10 text-center">Sync</th>
+                              <th className="p-2.5">Objeto</th>
+                              <th className="p-2.5">Origen / Cadena de Dependencia</th>
+                              <th className="p-2.5">Estado en Destino ({targetDb})</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800/60">
+                            {dependencyAnalysis.items.map((item) => {
+                              const isChecked = Boolean(selectedItems[item.key]);
+                              return (
+                                <tr key={item.key} className="hover:bg-zinc-900/60 transition-colors">
+                                  <td className="p-2.5 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleItem(item.key)}
+                                      className="text-zinc-400 hover:text-indigo-400"
+                                      title="Incluir o excluir del script SQL"
+                                    >
+                                      {isChecked ? (
+                                        <CheckSquare className="w-4 h-4 text-indigo-400" />
+                                      ) : (
+                                        <Square className="w-4 h-4 text-zinc-600" />
+                                      )}
+                                    </button>
+                                  </td>
+                                  <td className="p-2.5 font-mono">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`px-1.5 py-0.5 text-[10px] rounded font-bold uppercase ${
+                                        item.type === 'table'
+                                          ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                                          : item.type === 'procedure'
+                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                          : item.type === 'view'
+                                          ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                                          : item.type === 'function'
+                                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                          : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                      }`}>
+                                        {item.type}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedObjectKey(item.key);
+                                          if (item.status === 'identical') setHideIdentical(false);
+                                          setActiveModalTab('diff');
+                                        }}
+                                        className="font-bold text-zinc-100 hover:text-indigo-400 hover:underline text-left"
+                                        title="Inspeccionar DDL y diferencias de este objeto"
+                                      >
+                                        {item.name}
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="p-2.5">
+                                    {item.isRoot ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-200 text-[11px] font-medium">
+                                        🎯 Solicitado en la lista
+                                      </span>
+                                    ) : (
+                                      <div className="space-y-0.5">
+                                        <div className="font-mono text-[11px] text-indigo-300 flex items-center gap-1 flex-wrap">
+                                          {item.dependencyChain.join(' → ')}
+                                        </div>
+                                        {item.reasons[0] && (
+                                          <div className="text-[11px] text-zinc-400">
+                                            {item.reasons[0]}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-2.5 font-mono">
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                                      item.status === 'missing_in_target'
+                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                        : item.status === 'different'
+                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                        : item.status === 'extra_in_target'
+                                        ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                        : 'bg-zinc-800 text-zinc-400'
+                                    }`}>
+                                      {item.status === 'missing_in_target' && '+ FALTANTE EN DESTINO (SE CREARÁ)'}
+                                      {item.status === 'different' && '~ MODIFICADO (SE ACTUALIZARÁ)'}
+                                      {item.status === 'extra_in_target' && '- SOBRANTE EN DESTINO'}
+                                      {item.status === 'identical' && (options.forceRecreateSelected && item.type !== 'table' ? '✓ IDÉNTICO (SE RECREARÁ)' : '✓ IDÉNTICO (YA SINCRONIZADO)')}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+            </div>
           ) : (
-            /* TAB 2: Generated SQL Script Review & Edit */
+            /* TAB 3: Generated SQL Script Review & Edit */
             <div className="h-full flex flex-col overflow-hidden bg-zinc-950">
               
               {/* Script Bar */}

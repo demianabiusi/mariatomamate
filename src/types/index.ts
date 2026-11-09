@@ -364,6 +364,7 @@ export interface MigrationScriptOptions {
   includeDropRoutines?: boolean;
   includeDropTriggers?: boolean;
   includeDropEvents?: boolean;
+  forceRecreateSelected?: boolean;
   targetDatabaseOverride?: string;
 }
 
