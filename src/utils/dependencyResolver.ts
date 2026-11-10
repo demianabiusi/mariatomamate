@@ -33,6 +33,12 @@ export interface DependencyAnalysisResult {
   dependencyCount: number;
   diffCount: number; // missing_in_target or different
   identicalCount: number;
+  summary: {
+    rootCount: number;
+    dependencyCount: number;
+    diffCount: number;
+    identicalCount: number;
+  };
   notFoundInputs: string[];
   selectedMap: Record<string, boolean>; // Ready to apply to SchemaDiffModal selectedItems
 }
@@ -479,12 +485,12 @@ export function resolveObjectDependencies(
   const triggerMap = new Map<string, GenericObjectDiffItem>();
   const eventMap = new Map<string, GenericObjectDiffItem>();
 
-  for (const t of diff.tables) tableMap.set(t.name.toLowerCase(), t);
-  for (const v of diff.views) viewMap.set(v.name.toLowerCase(), v);
-  for (const p of diff.procedures) procMap.set(p.name.toLowerCase(), p);
-  for (const f of diff.functions) funcMap.set(f.name.toLowerCase(), f);
-  for (const tr of diff.triggers) triggerMap.set(tr.name.toLowerCase(), tr);
-  for (const ev of diff.events) eventMap.set(ev.name.toLowerCase(), ev);
+  for (const t of diff.tables || []) tableMap.set(t.name.toLowerCase(), t);
+  for (const v of diff.views || []) viewMap.set(v.name.toLowerCase(), v);
+  for (const p of diff.procedures || []) procMap.set(p.name.toLowerCase(), p);
+  for (const f of diff.functions || []) funcMap.set(f.name.toLowerCase(), f);
+  for (const tr of diff.triggers || []) triggerMap.set(tr.name.toLowerCase(), tr);
+  for (const ev of diff.events || []) eventMap.set(ev.name.toLowerCase(), ev);
 
   const catalog = {
     tables: tableMap,
@@ -495,7 +501,7 @@ export function resolveObjectDependencies(
 
   // Pre-compute table -> triggers map for includeTableTriggers
   const triggersByTable = new Map<string, GenericObjectDiffItem[]>();
-  for (const tr of diff.triggers) {
+  for (const tr of diff.triggers || []) {
     const ddl = tr.sourceDdl || tr.createSql || tr.targetDdl || '';
     const cleaned = stripSqlCommentsAndStrings(ddl);
     const { triggerTable } = extractSqlBody(cleaned, 'TRIGGER');
@@ -717,6 +723,12 @@ export function resolveObjectDependencies(
     dependencyCount,
     diffCount,
     identicalCount,
+    summary: {
+      rootCount,
+      dependencyCount,
+      diffCount,
+      identicalCount
+    },
     notFoundInputs,
     selectedMap
   };

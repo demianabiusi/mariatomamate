@@ -1967,25 +1967,25 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                       <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl">
                         <div className="text-[11px] text-zinc-400">Objetos Raíz (En Lista)</div>
                         <div className="text-lg font-bold font-mono text-zinc-100 mt-0.5">
-                          {dependencyAnalysis.summary.rootCount}
+                          {dependencyAnalysis.rootCount ?? 0}
                         </div>
                       </div>
                       <div className="p-3 bg-zinc-900/90 border border-indigo-500/30 rounded-xl">
                         <div className="text-[11px] text-indigo-300">Dependencias Detectadas</div>
                         <div className="text-lg font-bold font-mono text-indigo-400 mt-0.5">
-                          +{dependencyAnalysis.summary.dependencyCount}
+                          +{dependencyAnalysis.dependencyCount ?? 0}
                         </div>
                       </div>
                       <div className="p-3 bg-zinc-900/90 border border-amber-500/30 rounded-xl">
                         <div className="text-[11px] text-amber-300">Con Diferencias (A Sincronizar)</div>
                         <div className="text-lg font-bold font-mono text-amber-400 mt-0.5">
-                          {dependencyAnalysis.summary.diffCount}
+                          {dependencyAnalysis.diffCount ?? 0}
                         </div>
                       </div>
                       <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl">
                         <div className="text-[11px] text-zinc-400">Idénticos en Destino</div>
                         <div className="text-lg font-bold font-mono text-emerald-400 mt-0.5">
-                          {dependencyAnalysis.summary.identicalCount}
+                          {dependencyAnalysis.identicalCount ?? 0}
                         </div>
                       </div>
                     </div>
@@ -2046,13 +2046,13 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                                   <td className="p-2.5 font-mono">
                                     <div className="flex items-center gap-2">
                                       <span className={`px-1.5 py-0.5 text-[10px] rounded font-bold uppercase ${
-                                        item.type === 'table'
+                                        item.type === 'TABLE'
                                           ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                                          : item.type === 'procedure'
+                                          : item.type === 'PROCEDURE'
                                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                          : item.type === 'view'
+                                          : item.type === 'VIEW'
                                           ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
-                                          : item.type === 'function'
+                                          : item.type === 'FUNCTION'
                                           ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                           : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                                       }`}>
@@ -2103,7 +2103,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                                       {item.status === 'missing_in_target' && '+ FALTANTE EN DESTINO (SE CREARÁ)'}
                                       {item.status === 'different' && '~ MODIFICADO (SE ACTUALIZARÁ)'}
                                       {item.status === 'extra_in_target' && '- SOBRANTE EN DESTINO'}
-                                      {item.status === 'identical' && (options.forceRecreateSelected && item.type !== 'table' ? '✓ IDÉNTICO (SE RECREARÁ)' : '✓ IDÉNTICO (YA SINCRONIZADO)')}
+                                      {item.status === 'identical' && (options.forceRecreateSelected && item.type !== 'TABLE' ? '✓ IDÉNTICO (SE RECREARÁ)' : '✓ IDÉNTICO (YA SINCRONIZADO)')}
                                     </span>
                                   </td>
                                 </tr>
