@@ -818,6 +818,36 @@ export class MariaDbService {
     });
   }
 
+  private parseSqlTemporalExpression(val: any): string | null {
+    if (val && typeof val === 'object' && typeof val.__sqlExpr === 'string') {
+      val = val.__sqlExpr;
+    }
+    if (typeof val !== 'string') return null;
+    const trimmed = val.trim().toUpperCase();
+    const allowed: Record<string, string> = {
+      'NOW()': 'NOW()',
+      'NOW': 'NOW()',
+      'CURRENT_TIMESTAMP': 'CURRENT_TIMESTAMP',
+      'CURRENT_TIMESTAMP()': 'CURRENT_TIMESTAMP()',
+      'CURRENT_DATE': 'CURRENT_DATE',
+      'CURRENT_DATE()': 'CURRENT_DATE()',
+      'CURDATE()': 'CURDATE()',
+      'CURDATE': 'CURDATE()',
+      'CURRENT_TIME': 'CURRENT_TIME',
+      'CURRENT_TIME()': 'CURRENT_TIME()',
+      'CURTIME()': 'CURTIME()',
+      'CURTIME': 'CURTIME()',
+      'SYSDATE()': 'SYSDATE()',
+      'UTC_TIMESTAMP': 'UTC_TIMESTAMP()',
+      'UTC_TIMESTAMP()': 'UTC_TIMESTAMP()',
+      'UTC_DATE': 'UTC_DATE()',
+      'UTC_DATE()': 'UTC_DATE()',
+      'UTC_TIME': 'UTC_TIME()',
+      'UTC_TIME()': 'UTC_TIME()'
+    };
+    return allowed[trimmed] || null;
+  }
+
   public async updateCell(params: {
     db?: string;
     table: string;
@@ -838,6 +868,7 @@ export class MariaDbService {
     sql: string;
     primaryKeysUsed: string[];
     usedStrategy: 'primary_key' | 'full_row_match';
+    resolvedValue?: any;
   }> {
     return this.executeWithAutoReconnect(async (conn) => {
       const cleanTable = (params.table || '').replace(/[`'"]/g, '').trim();
@@ -906,6 +937,7 @@ export class MariaDbService {
         }
       }
 
+      const sqlExpr = this.parseSqlTemporalExpression(params.newValue);
       const valToSet = params.newValue === undefined ? null : params.newValue;
 
       // STRATEGY 1: Primary Key Match
@@ -933,19 +965,36 @@ export class MariaDbService {
         }
 
         // Execute UPDATE
-        const updateSql = `UPDATE ${tableRef} SET ${escapeId(cleanColumn)} = ? WHERE ${whereSql} LIMIT 1;`;
-        const updateParams = [valToSet, ...whereParams];
+        const setSql = sqlExpr ? `${escapeId(cleanColumn)} = ${sqlExpr}` : `${escapeId(cleanColumn)} = ?`;
+        const updateSql = `UPDATE ${tableRef} SET ${setSql} WHERE ${whereSql} LIMIT 1;`;
+        const updateParams = sqlExpr ? [...whereParams] : [valToSet, ...whereParams];
         const [updateRes] = await conn.query(updateSql, updateParams);
 
         const affected = (updateRes as any)?.affectedRows ?? 1;
         const changed = (updateRes as any)?.changedRows;
+
+        let resolvedValue: any = sqlExpr ? sqlExpr : valToSet;
+        if (sqlExpr) {
+          try {
+            const [valRows] = await conn.query(
+              `SELECT ${escapeId(cleanColumn)} AS updated_val FROM ${tableRef} WHERE ${whereSql} LIMIT 1;`,
+              whereParams
+            );
+            if (Array.isArray(valRows) && valRows.length > 0 && 'updated_val' in (valRows[0] as any)) {
+              resolvedValue = this.formatValue((valRows[0] as any).updated_val);
+            }
+          } catch {
+            // Keep sqlExpr if select fails
+          }
+        }
 
         return {
           affectedRows: affected,
           changedRows: changed,
           sql: updateSql,
           primaryKeysUsed: primaryKeys,
-          usedStrategy: 'primary_key'
+          usedStrategy: 'primary_key',
+          resolvedValue
         };
       }
 
@@ -1000,19 +1049,33 @@ export class MariaDbService {
       }
 
       // Exactly 1 row verified unique: safe to update!
-      const updateSql = `UPDATE ${tableRef} SET ${escapeId(cleanColumn)} = ? WHERE ${whereSql} LIMIT 1;`;
-      const updateParams = [valToSet, ...whereParams];
+      const setSql = sqlExpr ? `${escapeId(cleanColumn)} = ${sqlExpr}` : `${escapeId(cleanColumn)} = ?`;
+      const updateSql = `UPDATE ${tableRef} SET ${setSql} WHERE ${whereSql} LIMIT 1;`;
+      const updateParams = sqlExpr ? [...whereParams] : [valToSet, ...whereParams];
       const [updateRes] = await conn.query(updateSql, updateParams);
 
       const affected = (updateRes as any)?.affectedRows ?? 1;
       const changed = (updateRes as any)?.changedRows;
+
+      let resolvedValue: any = sqlExpr ? sqlExpr : valToSet;
+      if (sqlExpr) {
+        try {
+          const [exprRows] = await conn.query(`SELECT ${sqlExpr} AS expr_val;`);
+          if (Array.isArray(exprRows) && exprRows.length > 0 && 'expr_val' in (exprRows[0] as any)) {
+            resolvedValue = this.formatValue((exprRows[0] as any).expr_val);
+          }
+        } catch {
+          // Keep sqlExpr
+        }
+      }
 
       return {
         affectedRows: affected,
         changedRows: changed,
         sql: updateSql,
         primaryKeysUsed: [],
-        usedStrategy: 'full_row_match'
+        usedStrategy: 'full_row_match',
+        resolvedValue
       };
     });
   }
@@ -1227,6 +1290,7 @@ export class MariaDbService {
       const placeholders: string[] = [];
       const values: any[] = [];
       const insertedRow: Record<string, any> = {};
+      const sqlExprCols: { col: string; expr: string }[] = [];
 
       for (const [colName, val] of Object.entries(params.values)) {
         if (val !== undefined && val !== null && typeof val === 'object' && val.__isDefault) {
@@ -1237,10 +1301,17 @@ export class MariaDbService {
         }
 
         const cleanCol = colName.replace(/[`'"]/g, '').trim();
+        const sqlExpr = this.parseSqlTemporalExpression(val);
         cols.push(escapeId(cleanCol));
-        placeholders.push('?');
-        values.push(val);
-        insertedRow[cleanCol] = val;
+        if (sqlExpr) {
+          placeholders.push(sqlExpr);
+          insertedRow[cleanCol] = sqlExpr;
+          sqlExprCols.push({ col: cleanCol, expr: sqlExpr });
+        } else {
+          placeholders.push('?');
+          values.push(val);
+          insertedRow[cleanCol] = val;
+        }
       }
 
       let insertSql: string;
@@ -1253,6 +1324,8 @@ export class MariaDbService {
       const [insertRes] = await conn.query(insertSql, values);
       const insertId = (insertRes as any)?.insertId;
       const affected = (insertRes as any)?.affectedRows ?? 1;
+
+      let refetched = false;
 
       // Try to re-fetch the complete row if insertId was generated
       if (insertId && Number(insertId) > 0) {
@@ -1274,6 +1347,7 @@ export class MariaDbService {
             const [selectedRows] = await conn.query(`SELECT * FROM ${tableRef} WHERE ${escapeId(pkCol)} = ? LIMIT 1;`, [insertId]);
             if (Array.isArray(selectedRows) && selectedRows.length > 0) {
               Object.assign(insertedRow, selectedRows[0]);
+              refetched = true;
             }
           }
         } catch {
@@ -1293,11 +1367,33 @@ export class MariaDbService {
             const [fetched] = await conn.query(`SELECT * FROM ${tableRef} WHERE ${whereSql} LIMIT 1;`, whereVals);
             if (Array.isArray(fetched) && fetched.length > 0) {
               Object.assign(insertedRow, fetched[0]);
+              refetched = true;
             }
           }
         } catch {
           // Non-fatal
         }
+      }
+
+      if (!refetched && sqlExprCols.length > 0) {
+        try {
+          const selectExprs = sqlExprCols.map((item, i) => `${item.expr} AS \`v_${i}\``).join(', ');
+          const [exprRows] = await conn.query(`SELECT ${selectExprs};`);
+          if (Array.isArray(exprRows) && exprRows.length > 0) {
+            const first = exprRows[0] as any;
+            sqlExprCols.forEach((item, i) => {
+              if (`v_${i}` in first) {
+                insertedRow[item.col] = first[`v_${i}`];
+              }
+            });
+          }
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      for (const k of Object.keys(insertedRow)) {
+        insertedRow[k] = this.formatValue(insertedRow[k]);
       }
 
       return {

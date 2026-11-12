@@ -156,6 +156,37 @@ export const DataGrid: React.FC<DataGridProps> = ({
     };
   }, [targetTableInfo?.table, targetTableInfo?.db]);
 
+  const getTemporalColumnKind = useCallback((col: string): 'date' | 'datetime' | 'time' | null => {
+    const colMeta = result?.fieldsMeta?.find(f => f.name === col);
+    const orgName = colMeta?.orgName || col;
+    const schemaCol = tableColumns.find(tc => tc.columnName === orgName || tc.columnName === col);
+
+    if (schemaCol?.fieldType) {
+      const ft = schemaCol.fieldType.toUpperCase();
+      if (/^DATE$/i.test(ft)) return 'date';
+      if (/DATETIME|TIMESTAMP/i.test(ft)) return 'datetime';
+      if (/^TIME/i.test(ft)) return 'time';
+    }
+
+    if (typeof colMeta?.type === 'number') {
+      if (colMeta.type === 10 || colMeta.type === 14) return 'date';
+      if (colMeta.type === 7 || colMeta.type === 12) return 'datetime';
+      if (colMeta.type === 11) return 'time';
+    }
+
+    if (result?.rows) {
+      for (let i = 0; i < Math.min(result.rows.length, 10); i++) {
+        const v = result.rows[i]?.[col];
+        if (typeof v === 'string' && v.length >= 8) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return 'date';
+          if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(v)) return 'datetime';
+        }
+      }
+    }
+
+    return null;
+  }, [result?.fieldsMeta, result?.rows, tableColumns]);
+
   const handleStartEdit = (row: Record<string, any>, col: string) => {
     const rawVal = row[col];
     const isNull = rawVal === null || rawVal === undefined;
@@ -206,7 +237,7 @@ export const DataGrid: React.FC<DataGridProps> = ({
       });
 
       if (res.success && res.data) {
-        row[col] = parsedValue;
+        row[col] = res.data.resolvedValue !== undefined ? res.data.resolvedValue : parsedValue;
         setMutationEpoch(v => v + 1);
 
         setFlashCell({ row, col });
@@ -820,7 +851,12 @@ export const DataGrid: React.FC<DataGridProps> = ({
                     const schemaCol = tableColumns.find(tc => tc.columnName === orgName || tc.columnName === col);
                     const isAutoInc = schemaCol ? schemaCol.isAutoIncrement : Boolean(colMeta?.isPrimary);
                     const isNullable = schemaCol ? schemaCol.isNullable : true;
+                    const temporalKind = getTemporalColumnKind(col);
+                    const defaultTemporalExpr = temporalKind === 'date' ? 'CURRENT_DATE' : temporalKind === 'time' ? 'CURTIME()' : 'NOW()';
                     const cellState = draftRow[col] || { mode: 'value', value: '' };
+                    const isTemporalExprActive =
+                      cellState.mode === 'value' &&
+                      /^(NOW\(\)|NOW|CURRENT_DATE(\(\))?|CURDATE(\(\))?|CURRENT_TIMESTAMP(\(\))?|CURRENT_TIME(\(\))?|CURTIME(\(\))?|SYSDATE\(\))$/i.test(cellState.value.trim());
 
                     if (!isEditableCol) {
                       return (
@@ -881,10 +917,47 @@ export const DataGrid: React.FC<DataGridProps> = ({
                                 ? 'text-amber-400 italic placeholder-amber-400/70 border-amber-500/50 focus:border-emerald-500'
                                 : cellState.mode === 'default'
                                 ? 'text-blue-300 italic placeholder-blue-400/70 border-blue-500/40 focus:border-emerald-500'
+                                : isTemporalExprActive
+                                ? 'text-cyan-300 font-semibold border-cyan-500/70 focus:border-cyan-400'
                                 : 'text-zinc-100 placeholder-zinc-600 border-emerald-500/80 focus:border-emerald-400'
                             }`}
                           />
                           <div className="flex items-center gap-0.5 shrink-0">
+                            {temporalKind && (
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                disabled={isSavingDraft}
+                                onClick={() => setDraftRow(prev => {
+                                  if (!prev) return null;
+                                  const curr = prev[col];
+                                  const nextVal = isTemporalExprActive
+                                    ? (temporalKind === 'date' && curr?.value === 'CURRENT_DATE' ? 'NOW()' : '')
+                                    : defaultTemporalExpr;
+                                  return {
+                                    ...prev,
+                                    [col]: {
+                                      mode: nextVal ? 'value' : 'default',
+                                      value: nextVal
+                                    }
+                                  };
+                                })}
+                                className={`px-1 py-0.5 text-[9px] font-mono rounded border transition-colors ${
+                                  isTemporalExprActive
+                                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-bold'
+                                    : 'bg-zinc-900 text-cyan-400/80 border-zinc-800 hover:text-cyan-300 hover:border-cyan-500/40'
+                                }`}
+                                title={
+                                  temporalKind === 'date'
+                                    ? 'Insertar fecha actual del servidor (CURRENT_DATE / NOW())'
+                                    : temporalKind === 'time'
+                                    ? 'Insertar hora actual del servidor (CURTIME())'
+                                    : 'Insertar fecha y hora actual del servidor (NOW())'
+                                }
+                              >
+                                NOW
+                              </button>
+                            )}
                             <button
                               type="button"
                               tabIndex={-1}
@@ -976,6 +1049,12 @@ export const DataGrid: React.FC<DataGridProps> = ({
                     const isFlashed = flashCell?.row === row && flashCell?.col === col;
 
                     if (isEditing) {
+                      const temporalKind = getTemporalColumnKind(col);
+                      const defaultTemporalExpr = temporalKind === 'date' ? 'CURRENT_DATE' : temporalKind === 'time' ? 'CURTIME()' : 'NOW()';
+                      const isTemporalExprActive =
+                        !editingCell.isNull &&
+                        /^(NOW\(\)|NOW|CURRENT_DATE(\(\))?|CURDATE(\(\))?|CURRENT_TIMESTAMP(\(\))?|CURRENT_TIME(\(\))?|CURTIME(\(\))?|SYSDATE\(\))$/i.test(editingCell.val.trim());
+
                       return (
                         <td
                           key={col}
@@ -1007,10 +1086,43 @@ export const DataGrid: React.FC<DataGridProps> = ({
                               className={`w-full px-2 py-0.5 text-xs font-mono rounded bg-zinc-950 border focus:outline-none transition-all ${
                                 editingCell.isNull
                                   ? 'text-amber-400 italic placeholder-amber-400/60 border-amber-500/60'
+                                  : isTemporalExprActive
+                                  ? 'text-cyan-300 font-semibold border-cyan-500/80'
                                   : 'text-zinc-100 border-emerald-500'
                               }`}
                             />
                             <div className="flex items-center gap-0.5 shrink-0">
+                              {temporalKind && (
+                                <button
+                                  type="button"
+                                  disabled={editingCell.isSaving}
+                                  onClick={() => setEditingCell(prev => {
+                                    if (!prev) return null;
+                                    const nextVal = isTemporalExprActive
+                                      ? (temporalKind === 'date' && prev.val === 'CURRENT_DATE' ? 'NOW()' : String(row[col] ?? ''))
+                                      : defaultTemporalExpr;
+                                    return {
+                                      ...prev,
+                                      isNull: false,
+                                      val: nextVal
+                                    };
+                                  })}
+                                  className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition-colors ${
+                                    isTemporalExprActive
+                                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-bold'
+                                      : 'bg-zinc-800 text-cyan-400 border-zinc-700 hover:text-cyan-200'
+                                  }`}
+                                  title={
+                                    temporalKind === 'date'
+                                      ? 'Establecer fecha actual del servidor (CURRENT_DATE / NOW())'
+                                      : temporalKind === 'time'
+                                      ? 'Establecer hora actual del servidor (CURTIME())'
+                                      : 'Establecer fecha y hora actual del servidor (NOW())'
+                                  }
+                                >
+                                  NOW
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 disabled={editingCell.isSaving}

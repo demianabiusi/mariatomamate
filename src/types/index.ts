@@ -128,6 +128,7 @@ export interface UpdateCellResult {
   sql: string;
   primaryKeysUsed: string[];
   usedStrategy: 'primary_key' | 'full_row_match';
+  resolvedValue?: any;
 }
 
 export interface DeleteRowParams {
