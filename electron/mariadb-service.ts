@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { SshTunnelService, SshTunnelConfig, ActiveSshTunnel } from './ssh-tunnel-service';
+import { HttpTunnelConnection, HttpTunnelConfig } from './http-tunnel-service';
 import { createMysqlOldPasswordPlugin } from './mysql-old-password';
 
 export interface MySqlConnectionOptions {
@@ -13,6 +14,7 @@ export interface MySqlConnectionOptions {
   charset?: string;
   ssl?: boolean | { rejectUnauthorized?: boolean };
   ssh?: SshTunnelConfig;
+  httpTunnel?: HttpTunnelConfig;
   connectTimeout?: number;
 }
 
@@ -124,6 +126,29 @@ export class MariaDbService {
     return config;
   }
 
+  private async createConnectionInstance(
+    options: MySqlConnectionOptions,
+    overrideHostPort?: { host: string; port: number }
+  ): Promise<mysql.Connection> {
+    if (options.httpTunnel && options.httpTunnel.enabled) {
+      const httpConn = new HttpTunnelConnection(options.httpTunnel, {
+        host: options.host || '127.0.0.1',
+        port: Number(options.port) || 3306,
+        user: options.user || 'root',
+        password: options.password || '',
+        database: options.database,
+        charset: options.charset || 'utf8mb4',
+        connectTimeout: options.connectTimeout || 15000
+      });
+      // Verify connectivity immediately
+      await httpConn.ping();
+      return httpConn as unknown as mysql.Connection;
+    }
+
+    const connConfig = this.buildConnectionConfig(options, overrideHostPort);
+    return await mysql.createConnection(connConfig);
+  }
+
   public async testConnection(options: MySqlConnectionOptions): Promise<{
     success: boolean;
     message: string;
@@ -135,6 +160,29 @@ export class MariaDbService {
     let tempTunnel: ActiveSshTunnel | null = null;
 
     try {
+      // Si tiene Puente HTTP habilitado, probar a través del script PHP
+      if (options.httpTunnel && options.httpTunnel.enabled) {
+        const httpConn = new HttpTunnelConnection(options.httpTunnel, {
+          host: options.host || '127.0.0.1',
+          port: Number(options.port) || 3306,
+          user: options.user || 'root',
+          password: options.password || '',
+          database: options.database,
+          charset: options.charset || 'utf8mb4',
+          connectTimeout: options.connectTimeout || 15000
+        });
+        const pingInfo = await httpConn.ping();
+        const pingMs = Date.now() - start;
+        const ver = pingInfo.serverVersion || '';
+        const phpSuffix = pingInfo.phpVersion ? ` (vía Puente HTTP PHP ${pingInfo.phpVersion} 🌐)` : ' (vía Puente HTTP 🌐)';
+        return {
+          success: true,
+          message: `¡Conexión exitosa a ${ver ? `MariaDB/MySQL v${ver}` : 'la base de datos'}${phpSuffix}!`,
+          pingMs,
+          serverVersion: ver
+        };
+      }
+
       let hostPortOverride: { host: string; port: number } | undefined;
 
       // Si tiene túnel SSH habilitado, inicializar túnel temporal para el test
@@ -204,8 +252,8 @@ export class MariaDbService {
 
     let hostPortOverride: { host: string; port: number } | undefined;
 
-    // Si tiene túnel SSH habilitado, crear túnel persistente para la sesión
-    if (options.ssh && options.ssh.enabled) {
+    // Si tiene túnel SSH habilitado (y no es puente HTTP), crear túnel persistente para la sesión
+    if (!options.httpTunnel?.enabled && options.ssh && options.ssh.enabled) {
       try {
         this.activeTunnel = await this.sshTunnelService.createTunnel(
           options.ssh,
@@ -222,8 +270,7 @@ export class MariaDbService {
     }
 
     try {
-      const connConfig = this.buildConnectionConfig(options, hostPortOverride);
-      const conn = await mysql.createConnection(connConfig);
+      const conn = await this.createConnectionInstance(options, hostPortOverride);
 
       // Keep connection alive with error listener
       conn.on('error', (err) => {
@@ -312,6 +359,9 @@ export class MariaDbService {
 
   public isSocketDead(conn: mysql.Connection | null): boolean {
     if (!conn) return true;
+    if ((conn as any).isHttpTunnel) {
+      return Boolean((conn as any)._closing);
+    }
     const rawConn = (conn as any).connection;
     if (!rawConn) return true;
     if (rawConn._closing) return true;
@@ -344,9 +394,9 @@ export class MariaDbService {
         this.activeConnection = null;
       }
 
-      // Si tiene túnel SSH, verificar si sigue vivo o recrearlo
+      // Si tiene túnel SSH (y no es puente HTTP), verificar si sigue vivo o recrearlo
       let hostPortOverride: { host: string; port: number } | undefined;
-      if (this.currentConfig.ssh && this.currentConfig.ssh.enabled) {
+      if (!this.currentConfig.httpTunnel?.enabled && this.currentConfig.ssh && this.currentConfig.ssh.enabled) {
         const tunnelDead = !this.activeTunnel || (this.activeTunnel.isAlive && !this.activeTunnel.isAlive());
         if (tunnelDead) {
           console.log('[MariaDbService] 🔄 Reestableciendo túnel SSH caído...');
@@ -369,8 +419,7 @@ export class MariaDbService {
         }
       }
 
-      const connConfig = this.buildConnectionConfig(this.currentConfig, hostPortOverride);
-      const conn = await mysql.createConnection(connConfig);
+      const conn = await this.createConnectionInstance(this.currentConfig, hostPortOverride);
 
       conn.on('error', (err) => {
         console.error('MySQL connection error:', err);

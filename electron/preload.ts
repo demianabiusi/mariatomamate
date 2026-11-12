@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   testConnection: (config: any) => ipcRenderer.invoke('db:test-connection', config),
   testSshTunnel: (config: any) => ipcRenderer.invoke('ssh:test-tunnel', config),
   selectSshKeyFile: () => ipcRenderer.invoke('dialog:select-ssh-key'),
+  getHttpTunnelPhpScript: (accessKey?: string) => ipcRenderer.invoke('http-tunnel:get-php-script', accessKey),
+  saveHttpTunnelPhpFile: (accessKey?: string) => ipcRenderer.invoke('http-tunnel:save-php-file', accessKey),
   connect: (config: any) => ipcRenderer.invoke('db:connect', config),
   disconnect: () => ipcRenderer.invoke('db:disconnect'),
   getConnectionStatus: () => ipcRenderer.invoke('db:get-status'),

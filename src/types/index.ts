@@ -9,6 +9,15 @@ export interface SshTunnelConfig {
   passphrase?: string;
 }
 
+export interface HttpTunnelConfig {
+  enabled: boolean;
+  url: string;
+  accessKey?: string;
+  httpUser?: string;
+  httpPassword?: string;
+  rejectUnauthorized?: boolean;
+}
+
 export interface ConnectionConfig {
   id: string;
   name: string;
@@ -20,6 +29,7 @@ export interface ConnectionConfig {
   charset: string;
   ssl?: boolean;
   ssh?: SshTunnelConfig;
+  httpTunnel?: HttpTunnelConfig;
   createdAt?: string;
 }
 
@@ -478,6 +488,10 @@ export interface ElectronAPI {
 
   // App & Environment info
   getAppInfo?: () => Promise<AppInfo>;
+
+  // HTTP Tunnel PHP Script
+  getHttpTunnelPhpScript?: (accessKey?: string) => Promise<IpcResponse<string>>;
+  saveHttpTunnelPhpFile?: (accessKey?: string) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
 }
 
 export interface AppInfo {

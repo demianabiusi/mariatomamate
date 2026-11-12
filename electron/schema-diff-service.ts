@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { SshTunnelService, SshTunnelConfig, ActiveSshTunnel } from './ssh-tunnel-service';
+import { HttpTunnelConnection } from './http-tunnel-service';
 import { MariaDbService, MySqlConnectionOptions } from './mariadb-service';
 import { createMysqlOldPasswordPlugin } from './mysql-old-password';
 
@@ -209,6 +210,20 @@ export class SchemaDiffService {
     let conn: mysql.Connection | null = null;
 
     try {
+      if (options.httpTunnel && options.httpTunnel.enabled) {
+        const httpConn = new HttpTunnelConnection(options.httpTunnel, {
+          host: options.host || '127.0.0.1',
+          port: Number(options.port) || 3306,
+          user: options.user || 'root',
+          password: options.password || '',
+          database: database?.trim() || options.database?.trim(),
+          charset: options.charset || 'utf8mb4',
+          connectTimeout: 15000
+        });
+        conn = httpConn as unknown as mysql.Connection;
+        return await callback(conn);
+      }
+
       let hostOverride: string | undefined;
       let portOverride: number | undefined;
 
@@ -462,18 +477,48 @@ export class SchemaDiffService {
         }
       }
 
+      // Helper to fetch SHOW CREATE statements efficiently (batches HTTP requests when using HTTP Tunnel)
+      const fetchShowCreateBatch = async (sqlStatements: string[]): Promise<any[][]> => {
+        if (sqlStatements.length === 0) return [];
+        const batchFn = (conn as any).batchQuery;
+        if (typeof batchFn === 'function') {
+          const out: any[][] = [];
+          const chunkSize = 40;
+          for (let i = 0; i < sqlStatements.length; i += chunkSize) {
+            const chunk = sqlStatements.slice(i, i + chunkSize);
+            try {
+              const resList = await batchFn.call(conn, chunk);
+              for (const item of resList) {
+                out.push(item && item.ok && Array.isArray(item.rows) ? item.rows : []);
+              }
+            } catch {
+              for (let j = 0; j < chunk.length; j++) out.push([]);
+            }
+          }
+          return out;
+        }
+
+        const out: any[][] = [];
+        for (const q of sqlStatements) {
+          try {
+            const [rows] = await conn.query(q);
+            out.push(Array.isArray(rows) ? (rows as any[]) : []);
+          } catch {
+            out.push([]);
+          }
+        }
+        return out;
+      };
+
       // 7. Extract DDL for each table
       const tables: Record<string, TableMetadata> = {};
-      for (const tName of tableNames) {
-        let rawDdl = '';
-        try {
-          const [ddlRows] = await conn.query(`SHOW CREATE TABLE \`${database}\`.\`${tName}\`;`);
-          if (Array.isArray(ddlRows) && ddlRows[0]) {
-            rawDdl = (ddlRows[0] as any)['Create Table'] || '';
-          }
-        } catch (err: any) {
-          rawDdl = `-- Error al obtener DDL: ${err.message}`;
-        }
+      const tableDdlQueries = tableNames.map(tName => `SHOW CREATE TABLE \`${database}\`.\`${tName}\`;`);
+      const tableDdlResults = await fetchShowCreateBatch(tableDdlQueries);
+
+      for (let idx = 0; idx < tableNames.length; idx++) {
+        const tName = tableNames[idx];
+        const ddlRows = tableDdlResults[idx] || [];
+        const rawDdl = ddlRows[0] ? ((ddlRows[0] as any)['Create Table'] || '') : '';
 
         const colsList = columnsByTable[tName] || [];
         const colsMap: Record<string, ColumnMetadata> = {};
@@ -506,16 +551,12 @@ export class SchemaDiffService {
 
       // 8. Views
       const views: Record<string, GenericObjectMetadata> = {};
-      for (const vName of viewNames) {
-        let rawDdl = '';
-        try {
-          const [vRows] = await conn.query(`SHOW CREATE VIEW \`${database}\`.\`${vName}\`;`);
-          if (Array.isArray(vRows) && vRows[0]) {
-            rawDdl = (vRows[0] as any)['Create View'] || '';
-          }
-        } catch (err: any) {
-          rawDdl = `-- Error al obtener DDL de vista: ${err.message}`;
-        }
+      const viewDdlQueries = viewNames.map(vName => `SHOW CREATE VIEW \`${database}\`.\`${vName}\`;`);
+      const viewDdlResults = await fetchShowCreateBatch(viewDdlQueries);
+      for (let idx = 0; idx < viewNames.length; idx++) {
+        const vName = viewNames[idx];
+        const vRows = viewDdlResults[idx] || [];
+        const rawDdl = vRows[0] ? ((vRows[0] as any)['Create View'] || '') : '';
         views[vName] = {
           name: vName,
           type: 'VIEW',
@@ -532,18 +573,18 @@ export class SchemaDiffService {
           `SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ?;`,
           [database]
         );
-        if (Array.isArray(routineRows)) {
-          for (const r of routineRows as any[]) {
+        if (Array.isArray(routineRows) && routineRows.length > 0) {
+          const rList = routineRows as any[];
+          const rQueries = rList.map(r => `SHOW CREATE ${r.ROUTINE_TYPE} \`${database}\`.\`${r.ROUTINE_NAME}\`;`);
+          const rResults = await fetchShowCreateBatch(rQueries);
+
+          for (let idx = 0; idx < rList.length; idx++) {
+            const r = rList[idx];
             const rName = r.ROUTINE_NAME;
             const rType = r.ROUTINE_TYPE;
-            let ddl = '';
-            try {
-              const [showRows] = await conn.query(`SHOW CREATE ${rType} \`${database}\`.\`${rName}\`;`);
-              if (Array.isArray(showRows) && showRows[0]) {
-                const key = rType === 'PROCEDURE' ? 'Create Procedure' : 'Create Function';
-                ddl = (showRows[0] as any)[key] || '';
-              }
-            } catch {}
+            const showRows = rResults[idx] || [];
+            const key = rType === 'PROCEDURE' ? 'Create Procedure' : 'Create Function';
+            const ddl = showRows[0] ? ((showRows[0] as any)[key] || '') : '';
 
             const obj: GenericObjectMetadata = {
               name: rName,
@@ -567,16 +608,17 @@ export class SchemaDiffService {
           `SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?;`,
           [database]
         );
-        if (Array.isArray(trigRows)) {
-          for (const tr of trigRows as any[]) {
-            const trName = tr.TRIGGER_NAME;
-            let ddl = '';
-            try {
-              const [showRows] = await conn.query(`SHOW CREATE TRIGGER \`${database}\`.\`${trName}\`;`);
-              if (Array.isArray(showRows) && showRows[0]) {
-                ddl = (showRows[0] as any)['SQL Original Statement'] || (showRows[0] as any)['Create Trigger'] || '';
-              }
-            } catch {}
+        if (Array.isArray(trigRows) && trigRows.length > 0) {
+          const trList = trigRows as any[];
+          const trQueries = trList.map(tr => `SHOW CREATE TRIGGER \`${database}\`.\`${tr.TRIGGER_NAME}\`;`);
+          const trResults = await fetchShowCreateBatch(trQueries);
+
+          for (let idx = 0; idx < trList.length; idx++) {
+            const trName = trList[idx].TRIGGER_NAME;
+            const showRows = trResults[idx] || [];
+            const ddl = showRows[0]
+              ? ((showRows[0] as any)['SQL Original Statement'] || (showRows[0] as any)['Create Trigger'] || '')
+              : '';
             triggers[trName] = {
               name: trName,
               type: 'TRIGGER',
@@ -593,16 +635,15 @@ export class SchemaDiffService {
           `SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ?;`,
           [database]
         );
-        if (Array.isArray(eventRows)) {
-          for (const ev of eventRows as any[]) {
-            const evName = ev.EVENT_NAME;
-            let ddl = '';
-            try {
-              const [showRows] = await conn.query(`SHOW CREATE EVENT \`${database}\`.\`${evName}\`;`);
-              if (Array.isArray(showRows) && showRows[0]) {
-                ddl = (showRows[0] as any)['Create Event'] || '';
-              }
-            } catch {}
+        if (Array.isArray(eventRows) && eventRows.length > 0) {
+          const evList = eventRows as any[];
+          const evQueries = evList.map(ev => `SHOW CREATE EVENT \`${database}\`.\`${ev.EVENT_NAME}\`;`);
+          const evResults = await fetchShowCreateBatch(evQueries);
+
+          for (let idx = 0; idx < evList.length; idx++) {
+            const evName = evList[idx].EVENT_NAME;
+            const showRows = evResults[idx] || [];
+            const ddl = showRows[0] ? ((showRows[0] as any)['Create Event'] || '') : '';
             events[evName] = {
               name: evName,
               type: 'EVENT',

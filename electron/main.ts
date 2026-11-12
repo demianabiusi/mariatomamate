@@ -8,6 +8,7 @@ import { SchemaDiffService, SchemaCompareRequest, MigrationScriptOptions } from 
 import { UserService, UserSavePlan } from './user-service';
 import { ProcessService } from './process-service';
 import { ServerVariablesService } from './server-variables-service';
+import { generatePhpTunnelScript } from './http-tunnel-service';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
@@ -749,5 +750,39 @@ ipcMain.handle('server:variable-set', async (_, { name, value }: { name: string;
   } catch (err: any) {
     console.error(`Error in server:variable-set for ${name}:`, err);
     return { success: false, error: err.message || `Error al modificar la variable ${name}` };
+  }
+});
+
+// IPC: HTTP Tunnel PHP Script Generator & Downloader
+ipcMain.handle('http-tunnel:get-php-script', async (_, accessKey?: string) => {
+  try {
+    const script = generatePhpTunnelScript(accessKey || '');
+    return { success: true, data: script };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al generar el código PHP del puente' };
+  }
+});
+
+ipcMain.handle('http-tunnel:save-php-file', async (_, accessKey?: string) => {
+  if (!mainWindow) return { success: false, canceled: true };
+  try {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Guardar archivo puente PHP para Maria Toma Mate',
+      defaultPath: 'mtm_tunnel.php',
+      filters: [
+        { name: 'Script PHP', extensions: ['php'] },
+        { name: 'Todos los archivos', extensions: ['*'] }
+      ]
+    });
+
+    if (canceled || !filePath) {
+      return { success: false, canceled: true };
+    }
+
+    const scriptContent = generatePhpTunnelScript(accessKey || '');
+    fs.writeFileSync(filePath, scriptContent, 'utf-8');
+    return { success: true, filePath };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al guardar el archivo mtm_tunnel.php' };
   }
 });
