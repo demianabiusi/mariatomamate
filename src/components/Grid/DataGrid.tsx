@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { QueryResult } from '../../types';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { QueryResult, ColumnInfo } from '../../types';
 import { useTranslation } from '../../i18n/I18nContext';
 import { exportToCsv, exportToJson, exportToSqlInserts, exportToXlsx } from '../../utils/exporter';
-import { InsertRowModal } from '../Modals/InsertRowModal';
 import { 
   Download, 
   Search, 
@@ -66,9 +65,11 @@ export const DataGrid: React.FC<DataGridProps> = ({
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [mutationEpoch, setMutationEpoch] = useState(0);
 
-  // Insert row modal state
-  const [isInsertModalOpen, setIsInsertModalOpen] = useState(false);
-  const [duplicateRowValues, setDuplicateRowValues] = useState<Record<string, any> | null>(null);
+  // Inline insert row state
+  const [draftRow, setDraftRow] = useState<Record<string, { mode: 'value' | 'default' | 'null'; value: string }> | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [tableColumns, setTableColumns] = useState<ColumnInfo[]>([]);
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Delete row state
   const [rowToDelete, setRowToDelete] = useState<{ row: Record<string, any>; index: number } | null>(null);
@@ -109,7 +110,8 @@ export const DataGrid: React.FC<DataGridProps> = ({
     setSafetyError(null);
     setRowToDelete(null);
     setRowContextMenu(null);
-    setIsInsertModalOpen(false);
+    setDraftRow(null);
+    setIsSavingDraft(false);
   }, [result]);
 
   const hasEditableTable = useMemo(() => {
@@ -133,6 +135,26 @@ export const DataGrid: React.FC<DataGridProps> = ({
       isSingleTable: orgTables.length === 1
     };
   }, [result?.fieldsMeta]);
+
+  // Load schema column metadata for target table (to know AUTO_INCREMENT, defaults, nullability)
+  useEffect(() => {
+    let active = true;
+    if (!targetTableInfo?.table || !window.electronAPI?.getTableDetails) {
+      setTableColumns([]);
+      return;
+    }
+    window.electronAPI
+      .getTableDetails(targetTableInfo.table)
+      .then((res) => {
+        if (active && res.success && res.data?.columns) {
+          setTableColumns(res.data.columns);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [targetTableInfo?.table, targetTableInfo?.db]);
 
   const handleStartEdit = (row: Record<string, any>, col: string) => {
     const rawVal = row[col];
@@ -212,12 +234,53 @@ export const DataGrid: React.FC<DataGridProps> = ({
     }
   };
 
-  const handleOpenInsertModal = (initialVals?: Record<string, any>) => {
-    setDuplicateRowValues(initialVals || null);
-    setIsInsertModalOpen(true);
+  const buildInitialDraftRow = useCallback((initialVals?: Record<string, any> | null, colsInfo: ColumnInfo[] = tableColumns) => {
+    if (!result?.columns) return null;
+    const draft: Record<string, { mode: 'value' | 'default' | 'null'; value: string }> = {};
+
+    for (const col of result.columns) {
+      const meta = result.fieldsMeta?.find(f => f.name === col);
+      const orgName = meta?.orgName || col;
+      const schemaCol = colsInfo.find(tc => tc.columnName === orgName || tc.columnName === col);
+
+      const isAutoInc = schemaCol ? schemaCol.isAutoIncrement : Boolean(meta?.isPrimary);
+      const hasDefault = schemaCol ? (schemaCol.defaultValue !== null && schemaCol.defaultValue !== undefined) : false;
+      const isNullable = schemaCol ? schemaCol.isNullable : true;
+
+      if (initialVals) {
+        const rawVal = col in initialVals ? initialVals[col] : initialVals[orgName];
+        if (isAutoInc) {
+          draft[col] = { mode: 'default', value: '' };
+        } else if (rawVal === null || rawVal === undefined) {
+          draft[col] = { mode: 'null', value: '' };
+        } else {
+          draft[col] = { mode: 'value', value: String(rawVal) };
+        }
+      } else {
+        if (isAutoInc || hasDefault || !schemaCol) {
+          draft[col] = { mode: 'default', value: '' };
+        } else if (isNullable) {
+          draft[col] = { mode: 'null', value: '' };
+        } else {
+          draft[col] = { mode: 'value', value: '' };
+        }
+      }
+    }
+    return draft;
+  }, [result?.columns, result?.fieldsMeta, tableColumns]);
+
+  const handleStartInsertRow = (initialVals?: Record<string, any>) => {
+    setEditingCell(null);
+    setRowContextMenu(null);
+    setCurrentPage(1);
+    const nextDraft = buildInitialDraftRow(initialVals || null);
+    setDraftRow(nextDraft);
+    setTimeout(() => {
+      tableContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 20);
   };
 
-  const handleRowInserted = (newRow: Record<string, any>, sql: string, keepOpen?: boolean) => {
+  const handleRowInserted = (newRow: Record<string, any>, sql: string) => {
     if (!result) return;
 
     // Map inserted row fields to grid columns (accounting for possible column aliases in fieldsMeta)
@@ -247,6 +310,64 @@ export const DataGrid: React.FC<DataGridProps> = ({
 
     if (onRowInserted) {
       onRowInserted(mappedRow, sql);
+    }
+  };
+
+  const handleCommitDraftRow = async (keepAdding = false) => {
+    if (!draftRow || isSavingDraft || !targetTableInfo || !result) return;
+    setIsSavingDraft(true);
+
+    try {
+      const values: Record<string, any> = {};
+
+      for (const col of result.columns) {
+        const meta = result.fieldsMeta?.find(f => f.name === col);
+        if (meta && !meta.orgTable) continue;
+        if (meta?.orgTable && meta.orgTable !== targetTableInfo.table) continue;
+
+        const orgName = meta?.orgName || col;
+        const schemaCol = tableColumns.find(tc => tc.columnName === orgName || tc.columnName === col);
+        const state = draftRow[col];
+        if (!state) continue;
+
+        if (state.mode === 'default') {
+          values[orgName] = { __isDefault: true };
+        } else if (state.mode === 'null') {
+          values[orgName] = null;
+        } else {
+          const val = state.value;
+          const upperType = (schemaCol?.fieldType || '').toUpperCase();
+          const isNumeric = /INT|DECIMAL|NUMERIC|FLOAT|DOUBLE/i.test(upperType);
+
+          if (isNumeric && val.trim() !== '' && !isNaN(Number(val))) {
+            values[orgName] = Number(val);
+          } else {
+            values[orgName] = val;
+          }
+        }
+      }
+
+      const res = await window.electronAPI.insertRow({
+        db: targetTableInfo.db,
+        table: targetTableInfo.table,
+        values,
+        fieldsMeta: result.fieldsMeta
+      });
+
+      if (res.success && res.data) {
+        handleRowInserted(res.data.insertedRow, res.data.sql);
+        if (keepAdding) {
+          setDraftRow(buildInitialDraftRow(null));
+        } else {
+          setDraftRow(null);
+        }
+      } else {
+        setSafetyError(res.error || 'Error al insertar la fila en la tabla.');
+      }
+    } catch (err: any) {
+      setSafetyError(err.message || 'Error inesperado al intentar insertar la fila.');
+    } finally {
+      setIsSavingDraft(false);
     }
   };
 
@@ -486,17 +607,59 @@ export const DataGrid: React.FC<DataGridProps> = ({
             </div>
           ) : null}
 
-          {/* Insert Row Action Button */}
+          {/* Insert Row Action Button / Inline Controls */}
           {hasEditableTable && targetTableInfo && (
-            <button
-              type="button"
-              onClick={() => handleOpenInsertModal()}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow-xs transition-colors shrink-0 ml-1"
-              title={t('grid.insertRowTitle') || 'Insertar nueva fila'}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('grid.insertRow') || 'Insertar fila'}</span>
-            </button>
+            draftRow ? (
+              <div className="flex items-center gap-1.5 ml-1 bg-emerald-950/40 border border-emerald-500/30 rounded px-2 py-0.5">
+                <span className="text-[11px] text-emerald-300 font-medium hidden md:inline">
+                  Nueva fila:
+                </span>
+                <button
+                  type="button"
+                  disabled={isSavingDraft}
+                  onClick={() => handleCommitDraftRow(false)}
+                  className="flex items-center gap-1 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded text-[11px] font-semibold transition-colors"
+                  title="Guardar fila en la tabla (Enter)"
+                >
+                  {isSavingDraft ? (
+                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Check className="w-3 h-3" />
+                  )}
+                  <span>Guardar</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingDraft}
+                  onClick={() => handleCommitDraftRow(true)}
+                  className="flex items-center gap-1 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-emerald-400 border border-emerald-500/30 rounded text-[11px] font-medium transition-colors"
+                  title="Guardar e insertar otra fila (Shift+Enter)"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span className="hidden lg:inline">Guardar y otra</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingDraft}
+                  onClick={() => setDraftRow(null)}
+                  className="flex items-center gap-1 px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 hover:text-red-300 rounded text-[11px] transition-colors"
+                  title="Cancelar inserción (Esc)"
+                >
+                  <X className="w-3 h-3" />
+                  <span className="hidden sm:inline">Cancelar</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleStartInsertRow()}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow-xs transition-colors shrink-0 ml-1"
+                title={t('grid.insertRowTitle') || 'Insertar nueva fila directamente en la tabla'}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('grid.insertRow') || 'Insertar fila'}</span>
+              </button>
+            )
           )}
 
           {/* Success notification */}
@@ -577,7 +740,7 @@ export const DataGrid: React.FC<DataGridProps> = ({
       </div>
 
       {/* Table Content Container */}
-      <div className="flex-1 overflow-auto bg-zinc-950">
+      <div ref={tableContainerRef} className="flex-1 overflow-auto bg-zinc-950">
         <table className="w-full border-collapse text-left font-mono">
           <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800 z-10 select-none shadow-sm">
             <tr>
@@ -609,6 +772,169 @@ export const DataGrid: React.FC<DataGridProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-900/80 text-zinc-300">
+            {/* Inline Draft Row for New / Duplicated Record */}
+            {draftRow && targetTableInfo && (() => {
+              // Determine first non-auto-increment editable column for autoFocus
+              const firstFocusCol = result.columns.find((c) => {
+                const m = result.fieldsMeta?.find(f => f.name === c);
+                if (m && !m.orgTable) return false;
+                if (m?.orgTable && m.orgTable !== targetTableInfo.table) return false;
+                const orgName = m?.orgName || c;
+                const sc = tableColumns.find(tc => tc.columnName === orgName || tc.columnName === c);
+                const isAuto = sc ? sc.isAutoIncrement : Boolean(m?.isPrimary);
+                return !isAuto;
+              }) || result.columns[0];
+
+              return (
+                <tr className="bg-emerald-950/20 border-b-2 border-emerald-500/40">
+                  <td className="w-10 px-1.5 py-1 text-center border-r border-emerald-500/30 bg-emerald-950/40 select-none">
+                    <div className="flex items-center justify-center gap-0.5">
+                      <button
+                        type="button"
+                        disabled={isSavingDraft}
+                        onClick={() => handleCommitDraftRow(false)}
+                        className="p-1 text-emerald-400 hover:bg-emerald-500/20 rounded disabled:opacity-50 transition-colors"
+                        title="Guardar fila (Enter)"
+                      >
+                        {isSavingDraft ? (
+                          <div className="w-3 h-3 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSavingDraft}
+                        onClick={() => setDraftRow(null)}
+                        className="p-1 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded disabled:opacity-50 transition-colors"
+                        title="Cancelar inserción (Esc)"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                  {result.columns.map((col) => {
+                    const colMeta = result.fieldsMeta?.find(f => f.name === col);
+                    const isEditableCol = !colMeta || (Boolean(colMeta.orgTable) && colMeta.orgTable === targetTableInfo.table);
+                    const orgName = colMeta?.orgName || col;
+                    const schemaCol = tableColumns.find(tc => tc.columnName === orgName || tc.columnName === col);
+                    const isAutoInc = schemaCol ? schemaCol.isAutoIncrement : Boolean(colMeta?.isPrimary);
+                    const isNullable = schemaCol ? schemaCol.isNullable : true;
+                    const cellState = draftRow[col] || { mode: 'value', value: '' };
+
+                    if (!isEditableCol) {
+                      return (
+                        <td
+                          key={col}
+                          className="px-3 py-1 border-r border-emerald-500/20 text-zinc-600 italic text-[11px] whitespace-nowrap"
+                        >
+                          (calculado)
+                        </td>
+                      );
+                    }
+
+                    let placeholderText = schemaCol?.fieldType || col;
+                    if (cellState.mode === 'default') {
+                      if (isAutoInc) {
+                        placeholderText = 'AUTO';
+                      } else if (schemaCol?.defaultValue !== null && schemaCol?.defaultValue !== undefined) {
+                        placeholderText = `DEFAULT (${schemaCol.defaultValue})`;
+                      } else {
+                        placeholderText = 'DEFAULT';
+                      }
+                    } else if (cellState.mode === 'null') {
+                      placeholderText = 'NULL';
+                    }
+
+                    return (
+                      <td
+                        key={col}
+                        className="p-1 border-r border-emerald-500/30 min-w-[165px]"
+                      >
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            autoFocus={col === firstFocusCol}
+                            disabled={isSavingDraft}
+                            value={cellState.mode === 'value' ? cellState.value : ''}
+                            placeholder={placeholderText}
+                            onChange={(e) => {
+                              setDraftRow(prev => prev ? {
+                                ...prev,
+                                [col]: {
+                                  mode: 'value',
+                                  value: e.target.value
+                                }
+                              } : null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleCommitDraftRow(e.shiftKey || e.ctrlKey || e.metaKey);
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setDraftRow(null);
+                              }
+                            }}
+                            className={`w-full px-2 py-0.5 text-xs font-mono rounded bg-zinc-950 border focus:outline-none transition-all ${
+                              cellState.mode === 'null'
+                                ? 'text-amber-400 italic placeholder-amber-400/70 border-amber-500/50 focus:border-emerald-500'
+                                : cellState.mode === 'default'
+                                ? 'text-blue-300 italic placeholder-blue-400/70 border-blue-500/40 focus:border-emerald-500'
+                                : 'text-zinc-100 placeholder-zinc-600 border-emerald-500/80 focus:border-emerald-400'
+                            }`}
+                          />
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              type="button"
+                              tabIndex={-1}
+                              disabled={isSavingDraft}
+                              onClick={() => setDraftRow(prev => prev ? {
+                                ...prev,
+                                [col]: {
+                                  mode: prev[col]?.mode === 'default' ? 'value' : 'default',
+                                  value: ''
+                                }
+                              } : null)}
+                              className={`px-1 py-0.5 text-[9px] font-mono rounded border transition-colors ${
+                                cellState.mode === 'default'
+                                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 font-bold'
+                                  : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300'
+                              }`}
+                              title="Usar valor DEFAULT / AUTO_INCREMENT"
+                            >
+                              DEF
+                            </button>
+                            {isNullable && (
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                disabled={isSavingDraft}
+                                onClick={() => setDraftRow(prev => prev ? {
+                                  ...prev,
+                                  [col]: {
+                                    mode: prev[col]?.mode === 'null' ? 'value' : 'null',
+                                    value: ''
+                                  }
+                                } : null)}
+                                className={`px-1 py-0.5 text-[9px] font-mono rounded border transition-colors ${
+                                  cellState.mode === 'null'
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                    : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300'
+                                }`}
+                                title="Establecer como NULL"
+                              >
+                                NULL
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })()}
             {paginatedRows.map((row, idx) => {
               const rowIndex = (currentPage - 1) * pageSize + idx + 1;
               return (
@@ -768,7 +1094,7 @@ export const DataGrid: React.FC<DataGridProps> = ({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleOpenInsertModal(row);
+                                  handleStartInsertRow(row);
                                 }}
                                 className="p-1 hover:text-blue-400 text-zinc-400 rounded transition-colors"
                                 title={t('grid.duplicateRow') || 'Duplicar fila'}
@@ -942,23 +1268,6 @@ export const DataGrid: React.FC<DataGridProps> = ({
         </div>
       )}
 
-      {/* Insert / Duplicate Row Modal */}
-      {hasEditableTable && targetTableInfo && (
-        <InsertRowModal
-          isOpen={isInsertModalOpen}
-          onClose={() => {
-            setIsInsertModalOpen(false);
-            setDuplicateRowValues(null);
-          }}
-          tableName={targetTableInfo.table}
-          database={targetTableInfo.db}
-          columns={result.columns}
-          fieldsMeta={result.fieldsMeta}
-          initialValues={duplicateRowValues}
-          onSuccess={handleRowInserted}
-        />
-      )}
-
       {/* Delete Row Confirmation Dialog */}
       {rowToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 select-none animate-in fade-in duration-150">
@@ -1053,7 +1362,7 @@ export const DataGrid: React.FC<DataGridProps> = ({
             <div className="py-1">
               <button
                 onClick={() => {
-                  handleOpenInsertModal(rowContextMenu.row);
+                  handleStartInsertRow(rowContextMenu.row);
                   setRowContextMenu(null);
                 }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left text-zinc-200 hover:text-white transition-colors"
