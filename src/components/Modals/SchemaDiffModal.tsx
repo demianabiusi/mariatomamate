@@ -96,7 +96,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
   const [targetDatabases, setTargetDatabases] = useState<string[]>([]);
   const [isLoadingTargetDbs, setIsLoadingTargetDbs] = useState(false);
 
-  // Script options
+  // Script & Comparison options
   const [options, setOptions] = useState<MigrationScriptOptions>({
     includeDropTables: false,
     includeDropColumns: false,
@@ -106,6 +106,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
     includeDropTriggers: false,
     includeDropEvents: false
   });
+  const [ignoreComments, setIgnoreComments] = useState<boolean>(true);
   const [showOptionsDrawer, setShowOptionsDrawer] = useState(false);
 
   // Comparison states
@@ -341,7 +342,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
   };
 
   // Run metadata comparison
-  const handleRunComparison = async () => {
+  const handleRunComparison = async (params?: { ignoreCommentsOverride?: boolean; useCached?: boolean }) => {
     if (!sourceConnId || !sourceDb) {
       setComparisonError('Selecciona la conexión y base de datos de origen.');
       return;
@@ -363,12 +364,17 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
       return;
     }
 
-    setIsComparing(true);
-    setCompareProgress({
-      stage: 'connect_source',
-      percentage: 10,
-      message: `Iniciando análisis entre ${sourceDb} y ${targetDb}...`
-    });
+    const effectiveIgnoreComments =
+      params?.ignoreCommentsOverride !== undefined ? params.ignoreCommentsOverride : ignoreComments;
+
+    if (!params?.useCached) {
+      setIsComparing(true);
+      setCompareProgress({
+        stage: 'connect_source',
+        percentage: 10,
+        message: `Iniciando análisis entre ${sourceDb} y ${targetDb}...`
+      });
+    }
     setComparisonError(null);
     setExecutionResult(null);
 
@@ -379,9 +385,10 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
         targetConfig: tConn,
         targetDatabase: targetDb,
         options: {
-          ignoreComments: false,
+          ignoreComments: effectiveIgnoreComments,
           ignoreCollation: false
-        }
+        },
+        useCachedSnapshots: Boolean(params?.useCached)
       });
 
       if (res.success && res.data) {
@@ -608,6 +615,13 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
     }
   };
 
+  const handleToggleIgnoreComments = (nextVal: boolean) => {
+    setIgnoreComments(nextVal);
+    if (diffResult) {
+      handleRunComparison({ ignoreCommentsOverride: nextVal, useCached: true });
+    }
+  };
+
   // Copy SQL script to clipboard
   const handleCopyScript = () => {
     if (!generatedScript) return;
@@ -752,6 +766,23 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <label
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition-colors ${
+                ignoreComments
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+              }`}
+              title="Ignora diferencias en comentarios SQL (--, #, /* */) dentro de Stored Procedures/Funciones/Triggers y atributos COMMENT en tablas y columnas"
+            >
+              <input
+                type="checkbox"
+                checked={ignoreComments}
+                onChange={(e) => handleToggleIgnoreComments(e.target.checked)}
+                className="rounded border-zinc-600 text-emerald-500 focus:ring-0"
+              />
+              <span>Ignorar comentarios</span>
+            </label>
+
             <button
               type="button"
               onClick={() => setShowOptionsDrawer(!showOptionsDrawer)}
@@ -886,7 +917,7 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
             <div>
               <button
                 type="button"
-                onClick={handleRunComparison}
+                onClick={() => handleRunComparison()}
                 disabled={isComparing || !sourceDb || !targetDb}
                 className="w-full h-11 px-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all active:scale-95"
               >
@@ -908,7 +939,17 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
 
           {/* Optional Options Drawer */}
           {showOptionsDrawer && (
-            <div className="mt-3 p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl grid grid-cols-2 md:grid-cols-5 gap-3 text-xs animate-in fade-in zoom-in-95 duration-100">
+            <div className="mt-3 p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs animate-in fade-in zoom-in-95 duration-100">
+              <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100" title="Omite comentarios SQL (--, #, /* */) en rutinas/vistas y COMMENT en tablas y columnas al comparar">
+                <input
+                  type="checkbox"
+                  checked={ignoreComments}
+                  onChange={(e) => handleToggleIgnoreComments(e.target.checked)}
+                  className="rounded border-zinc-700 text-emerald-500 focus:ring-0"
+                />
+                <span>Ignorar comentarios</span>
+              </label>
+
               <label className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-zinc-100">
                 <input
                   type="checkbox"
@@ -1177,16 +1218,31 @@ export const SchemaDiffModal: React.FC<SchemaDiffModalProps> = ({
                         />
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                        <label className="flex items-center gap-1.5 cursor-pointer hover:text-zinc-200 select-none">
-                          <input
-                            type="checkbox"
-                            checked={hideIdentical}
-                            onChange={(e) => setHideIdentical(e.target.checked)}
-                            className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
-                          />
-                          <span>{t('schemaDiff.hideIdentical')}</span>
-                        </label>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 cursor-pointer hover:text-zinc-200 select-none">
+                            <input
+                              type="checkbox"
+                              checked={hideIdentical}
+                              onChange={(e) => setHideIdentical(e.target.checked)}
+                              className="rounded border-zinc-700 text-indigo-500 focus:ring-0"
+                            />
+                            <span>{t('schemaDiff.hideIdentical')}</span>
+                          </label>
+
+                          <label
+                            className="flex items-center gap-1.5 cursor-pointer hover:text-zinc-200 select-none"
+                            title="Ignora comentarios SQL (--, #, /* */) y atributos COMMENT al comparar"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={ignoreComments}
+                              onChange={(e) => handleToggleIgnoreComments(e.target.checked)}
+                              className="rounded border-zinc-700 text-emerald-500 focus:ring-0"
+                            />
+                            <span>Ignorar comentarios</span>
+                          </label>
+                        </div>
 
                         <div className="flex items-center gap-2">
                           <button

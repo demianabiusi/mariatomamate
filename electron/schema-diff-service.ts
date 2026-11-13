@@ -191,10 +191,17 @@ export interface SchemaCompareRequest {
   targetConfig: MySqlConnectionOptions;
   targetDatabase: string;
   options?: DiffCompareOptions;
+  useCachedSnapshots?: boolean;
 }
 
 export class SchemaDiffService {
   private sshTunnelService: SshTunnelService = new SshTunnelService();
+  private cachedComparison: {
+    sourceSnapshot: DatabaseSchemaSnapshot;
+    targetSnapshot: DatabaseSchemaSnapshot;
+    sourceConnName: string;
+    targetConnName: string;
+  } | null = null;
 
   constructor(private mariaDbService?: MariaDbService) {}
 
@@ -684,6 +691,160 @@ export class SchemaDiffService {
   }
 
   /**
+   * Strips SQL comments (-- ..., # ..., /* ... *​/) and metadata COMMENT '...' clauses
+   * while preserving string literals and backticked identifiers for comment-ignoring comparison.
+   */
+  public static stripSqlCommentsForComparison(ddl: string): string {
+    if (!ddl) return '';
+    let out = '';
+    let i = 0;
+    const len = ddl.length;
+
+    while (i < len) {
+      const ch = ddl[i];
+      const next = i + 1 < len ? ddl[i + 1] : '';
+
+      // 1. Single-quoted string literal
+      if (ch === "'") {
+        out += ch;
+        i++;
+        while (i < len) {
+          const c = ddl[i];
+          out += c;
+          if (c === '\\' && i + 1 < len) {
+            i++;
+            out += ddl[i];
+          } else if (c === "'" && i + 1 < len && ddl[i + 1] === "'") {
+            i++;
+            out += ddl[i];
+          } else if (c === "'") {
+            i++;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+
+      // 2. Double-quoted string literal
+      if (ch === '"') {
+        out += ch;
+        i++;
+        while (i < len) {
+          const c = ddl[i];
+          out += c;
+          if (c === '\\' && i + 1 < len) {
+            i++;
+            out += ddl[i];
+          } else if (c === '"' && i + 1 < len && ddl[i + 1] === '"') {
+            i++;
+            out += ddl[i];
+          } else if (c === '"') {
+            i++;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+
+      // 3. Backtick identifier
+      if (ch === '`') {
+        out += ch;
+        i++;
+        while (i < len) {
+          const c = ddl[i];
+          out += c;
+          if (c === '`' && i + 1 < len && ddl[i + 1] === '`') {
+            i++;
+            out += ddl[i];
+          } else if (c === '`') {
+            i++;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+
+      // 4. Single-line comment --
+      if (ch === '-' && next === '-') {
+        i += 2;
+        while (i < len && ddl[i] !== '\n' && ddl[i] !== '\r') {
+          i++;
+        }
+        out += ' ';
+        continue;
+      }
+
+      // 5. Single-line comment #
+      if (ch === '#') {
+        i++;
+        while (i < len && ddl[i] !== '\n' && ddl[i] !== '\r') {
+          i++;
+        }
+        out += ' ';
+        continue;
+      }
+
+      // 6. Multi-line block comment /* ... */
+      if (ch === '/' && next === '*') {
+        i += 2;
+        while (i < len && !(ddl[i] === '*' && i + 1 < len && ddl[i + 1] === '/')) {
+          i++;
+        }
+        if (i < len) {
+          i += 2;
+        }
+        out += ' ';
+        continue;
+      }
+
+      // 7. Standalone COMMENT [=] '...' or COMMENT [=] "..." metadata clause
+      const prevChar = i > 0 ? ddl[i - 1] : ' ';
+      if (!/[a-zA-Z0-9_$]/.test(prevChar) && ddl.slice(i, i + 7).toUpperCase() === 'COMMENT') {
+        const afterKeyword = i + 7 < len ? ddl[i + 7] : ' ';
+        if (!/[a-zA-Z0-9_$]/.test(afterKeyword)) {
+          let j = i + 7;
+          while (j < len && /\s/.test(ddl[j])) j++;
+          if (j < len && ddl[j] === '=') {
+            j++;
+            while (j < len && /\s/.test(ddl[j])) j++;
+          }
+          if (j < len && (ddl[j] === "'" || ddl[j] === '"')) {
+            const quote = ddl[j];
+            j++;
+            while (j < len) {
+              const c = ddl[j];
+              if (c === '\\' && j + 1 < len) {
+                j += 2;
+                continue;
+              }
+              if (c === quote && j + 1 < len && ddl[j + 1] === quote) {
+                j += 2;
+                continue;
+              }
+              if (c === quote) {
+                j++;
+                break;
+              }
+              j++;
+            }
+            i = j;
+            out += ' ';
+            continue;
+          }
+        }
+      }
+
+      out += ch;
+      i++;
+    }
+
+    return out;
+  }
+
+  /**
    * Formats a complete column definition for ALTER TABLE ADD/MODIFY
    */
   public static formatColumnDefinition(col: ColumnMetadata): string {
@@ -1112,9 +1273,16 @@ export class SchemaDiffService {
           const cleanSDdl = SchemaDiffService.cleanDdl(sObj.rawDdl, source.database);
           const cleanTDdl = SchemaDiffService.cleanDdl(tObj.rawDdl, target.database);
 
+          const cmpSDdl = options?.ignoreComments
+            ? SchemaDiffService.stripSqlCommentsForComparison(cleanSDdl)
+            : cleanSDdl;
+          const cmpTDdl = options?.ignoreComments
+            ? SchemaDiffService.stripSqlCommentsForComparison(cleanTDdl)
+            : cleanTDdl;
+
           // Normalize whitespace for comparison
-          const normS = cleanSDdl.replace(/\s+/g, ' ').trim().toLowerCase();
-          const normT = cleanTDdl.replace(/\s+/g, ' ').trim().toLowerCase();
+          const normS = cmpSDdl.replace(/\s+/g, ' ').trim().toLowerCase();
+          const normT = cmpTDdl.replace(/\s+/g, ' ').trim().toLowerCase();
 
           if (normS !== normT) {
             diffs.push({
@@ -1589,6 +1757,26 @@ export class SchemaDiffService {
     req: SchemaCompareRequest,
     onProgress?: (progress: CompareProgress) => void
   ): Promise<SchemaDiffResult> {
+    const sourceConnName = req.sourceConfig.name || `${req.sourceConfig.host}:${req.sourceConfig.port}`;
+    const targetConnName = req.targetConfig.name || `${req.targetConfig.host}:${req.targetConfig.port}`;
+
+    if (
+      req.useCachedSnapshots &&
+      this.cachedComparison &&
+      this.cachedComparison.sourceSnapshot.database === req.sourceDatabase &&
+      this.cachedComparison.targetSnapshot.database === req.targetDatabase &&
+      this.cachedComparison.sourceConnName === sourceConnName &&
+      this.cachedComparison.targetConnName === targetConnName
+    ) {
+      return this.compareSnapshots(
+        this.cachedComparison.sourceSnapshot,
+        this.cachedComparison.targetSnapshot,
+        sourceConnName,
+        targetConnName,
+        req.options
+      );
+    }
+
     onProgress?.({
       stage: 'connect_source',
       percentage: 10,
@@ -1623,8 +1811,12 @@ export class SchemaDiffService {
       message: 'Comparando esquemas y detectando diferencias...'
     });
 
-    const sourceConnName = req.sourceConfig.name || `${req.sourceConfig.host}:${req.sourceConfig.port}`;
-    const targetConnName = req.targetConfig.name || `${req.targetConfig.host}:${req.targetConfig.port}`;
+    this.cachedComparison = {
+      sourceSnapshot,
+      targetSnapshot,
+      sourceConnName,
+      targetConnName
+    };
 
     const diffResult = this.compareSnapshots(
       sourceSnapshot,

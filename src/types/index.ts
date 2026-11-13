@@ -385,6 +385,7 @@ export interface SchemaCompareRequest {
   targetConfig: ConnectionConfig;
   targetDatabase: string;
   options?: DiffCompareOptions;
+  useCachedSnapshots?: boolean;
 }
 
 export interface CompareProgress {
